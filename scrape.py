@@ -1,7 +1,9 @@
 # Import library
+import csv
+import json
+
 import requests
 from bs4 import BeautifulSoup
-import json
 
 # dictionary to collect all websites' content
 data = {}
@@ -91,3 +93,16 @@ def scrape02(link='https://thewirecutter.com/reviews/amazon-echo-vs-google-home/
         content.append(comment)
 
     return content
+
+
+# Populate the dictionary
+data['Link_1'] = scrape01()
+data['Link_2'] = scrape02()
+
+# write csv
+with open('data.csv', 'w', newline='') as csvfile:
+    fieldnames = ['Link_1', 'Link_2']
+    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+    writer.writeheader()
+    writer.writerow(data)
