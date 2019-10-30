@@ -4,6 +4,7 @@ import nltk
 import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
+from nltk.corpus import wordnet as wn
 
 data = pd.read_csv('data.csv')
 
@@ -121,11 +122,6 @@ sentences = nltk.sent_tokenize(' '.join(text))
 # TODO: add dot at the end of title (headline)
 len(sentences)
 
-# POS (Part-of-speech) tagging >> Information Extraction
-# if you're interested in extracting specific tags (word classes / types)
-# nltk.download('tagsets')
-nltk.help.upenn_tagset('')  # help tags meaning
-
 # TF - IDF
 # min document frequency of 5
 vect = TfidfVectorizer(min_df=5).fit(text)
@@ -143,5 +139,80 @@ print('Largest tfidf: \n{}'.format(feature_names[sorted_tfidf_index[:-11:-1]]))
 
 # TOPIC MODELLING
 
+
 # INFORAMTION EXTRACTION
 # N-GRAM add context by ading sequences of word.
+
+# POS (Part-of-speech) tagging >> Information Extraction
+# if you're interested in extracting specific tags (word classes / types)
+# nltk.download('tagsets')
+nltk.help.upenn_tagset('')  # help tags meaning
+# Document Similarity
+# nltk.download('averaged_perceptron_tagger')
+
+
+def convert_tag(tag):
+    '''
+    Convert tag given by nltk.pos_tag to the wordnet.synsets'tag
+    '''
+
+    # n = noun, v = verb, a = adjective, r = adverb
+    tag_dict = {'N': 'n', 'J': 'a', 'R': 'r', 'V': 'v'}
+
+    # not all tags are being converted
+    try:
+        return tag_dict[tag[0]]
+    except KeyError:
+        return None
+
+    tag_dict['N']
+
+
+def doc_to_synsets(doc):
+    '''
+    Retuns a list of synsets in document
+    '''
+
+    token = nltk.word_tokenize(doc)
+    word_tag = nltk.pos_tag(token)
+
+    synsets = []
+
+    for word, tag in word_tag:
+        tag = convert_tag(tag)
+        # Synset simple interface in nltk to look up words in WordNet
+        # synset instance are grupings of synonymous words
+        synset = wn.synsets(word, pos=tag)
+        if len(synset) != 0:
+            synsets.append(synset[0])
+        else:
+            continue
+
+    return synsets
+
+
+def similarity_score(s1, s2):
+    '''
+    Calculate the normalized similarity score.
+    Input: s1, s2, list of synsets from doc_to_synsets
+    Output: normalized similarity score of s1 onto s2
+    '''
+
+    largest_sim_values = []
+    # similarity score
+    for syn1 in s1:
+        similarity_values = []
+        for syn2 in s2:
+            sim_val = wn.path_similarity(syn1, syn2)
+            if sim_val is not None:
+                similarity_values.append(sim_val)
+        if len(similarity_values) != 0:
+            largest_sim_values.append(max(similarity_values))
+
+    return sum(largest_sim_values) / len(largest_sim_values)
+
+
+s1 = doc_to_synsets(text[0])
+s2 = doc_to_synsets(text[1])
+
+similarity_score(s1, s2)
