@@ -1,9 +1,10 @@
 import re
-
+import gensim
 import nltk
 import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer
 from nltk.corpus import wordnet as wn
 
 data = pd.read_csv('data.csv')
@@ -138,10 +139,63 @@ print('Smallest tfidf:\n{}\n'.format(feature_names[sorted_tfidf_index[:10]]))
 print('Largest tfidf: \n{}'.format(feature_names[sorted_tfidf_index[:-11:-1]]))
 
 # TOPIC MODELLING
+# Use CountVectorizor to find three letter tokens, remove stop_words,
+# remove tokens that don't appear in at least 5 documents,
+# remove tokens that appear in more than 30% of the documents
+vect = CountVectorizer(min_df=5, max_df=0.3, stop_words='english',
+                       token_pattern='(?u)\\b\\w\\w\\w+\\b')
 
+# Fit and transform
+X = vect.fit_transform(text)
+
+# Convert sparse matrix to gensim corpus
+corpus = gensim.matutils.Sparse2Corpus(X, documents_columns=False)
+
+# Mapping from word IDs to words (To be used in LdaModel's id2word parameter)
+id_map = dict((v, k) for k, v in vect.vocabulary_.items())
+
+# Estimate LDA model parameters on the corpus
+ldamodel = gensim.models.ldamodel.LdaModel(corpus=corpus, num_topics=3, id2word=id_map,
+                                           passes=25, random_state=34)
+
+# Find list of topics and the most significant 10 words
+
+
+def lda_topics():
+    return ldamodel.print_topics()
+
+
+# topic_distribution in a new document
+new_doc = list(text[89])
+new_doc_vec = vect.transform(new_doc)
+new_corpus = gensim.matutils.Sparse2Corpus(
+    new_doc_vec, documents_columns=False)
+list(ldamodel.get_document_topics(new_corpus))[0]
+
+# topic_names
+
+
+def topic_names():
+
+    # List of potential topics
+
+    topic_label = ['Health', 'Science', 'Automobiles', 'Politics', 'Government', 'Travel',
+                   'Computers & IT', 'Sports', 'Business', 'Society & Lifestyle', 'Religion', 'Education']
+    topics = lda_topics()
+    result = []
+    for _, dist in topics:
+        similarity = []
+        for topic in topic_label:
+            similarity.append(document_path_similarity(dist, topic))
+        # associate similarity with the labels using zip
+        best_topic = sorted(zip(similarity, topic_label))[-1][1]
+
+        result.append(best_topic)
+    return result
 
 # INFORAMTION EXTRACTION
 # N-GRAM add context by ading sequences of word.
+
 
 # POS (Part-of-speech) tagging >> Information Extraction
 # if you're interested in extracting specific tags (word classes / types)
@@ -216,3 +270,15 @@ s1 = doc_to_synsets(text[0])
 s2 = doc_to_synsets(text[1])
 
 similarity_score(s1, s2)
+
+
+def document_path_similarity(doc1, doc2):
+    '''
+    Finds symmetrical similarity between doc1 and doc2
+    '''
+
+    synsets1 = doc_to_synsets(doc1)
+    synsets2 = doc_to_synsets(doc2)
+
+    return (similarity_score(synsets1, synsets2) +
+            similarity_score(synsets2, synsets1)) / 2
