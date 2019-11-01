@@ -1,9 +1,15 @@
 # Import library
 import csv
 import json
+import re
 
 import requests
 from bs4 import BeautifulSoup
+from user_agent import generate_user_agent
+
+# generate a user agent
+headers = {
+    'User-Agent': generate_user_agent(device_type="desktop", os=('mac', 'linux'))}
 
 # dictionary to collect all websites' content
 data = {}
@@ -106,3 +112,160 @@ with open('data.csv', 'w', newline='') as csvfile:
 
     writer.writeheader()
     writer.writerow(data)
+
+# webscraping privacy
+privacy_train = {}
+
+
+def privacy_01(link='https://www.cisecurity.org/newsletter/security-and-privacy-in-the-connected-home/'):
+
+    source = requests.get(link, headers=headers).text
+
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('div', class_='div_img_responsive')
+
+        body_par = []
+        for i in body.find_all(['p', 'li']):
+            body_par.append(i.text)
+
+        # Delete the first row 'From the desk of Thomas F. Duffy, MS-ISAC Chair'
+        body_par = body_par[1::]
+
+        print('Link 1 Privacy - Success!')
+
+        return {'link': link, 'category': 'privacy', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 1 Privacy - Error Occurred..')
+
+
+def privacy_02(link='https://venturebeat.com/2019/05/15/privacy-remains-a-big-issue-in-todays-smart-home/'):
+
+    source = requests.get(link).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('article', id='post-2493846')
+        body_par = []
+        for i in body.find_all('p'):
+            body_par.append(i.text)
+
+        # remove disclosure
+        body_par = body_par[: -1]
+
+        # remove image description Above
+        body_par = [elm for elm in body_par if not elm.startswith('Above')]
+
+        print('Link 2 Privacy - Success!')
+
+        return {'link': link, 'category': 'privacy', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 2 Privacy - Error Occurred..')
+
+
+def privacy_03(link='https://venturebeat.com/2018/12/20/alexa-glitch-let-a-user-eavesdrop-on-another-home/'):
+
+    source = requests.get(link).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('article', id='post-2448604')
+        body_par = []
+
+        for i in body.find_all('p'):
+            body_par.append(i.text)
+
+        # remove writer
+        body_par = body_par[: -1]
+
+        # remove source from first element
+        body_par[0] = re.sub(r'^(.*)(?=A )', '', body_par[0])
+
+        print('Link 3 Privacy - Success!')
+
+        return {'link': link, 'category': 'privacy', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 3 Privacy - Error Occurred..')
+
+
+def privacy_04(link='https://www.csoonline.com/article/3273929/voice-squatting-attacks-hacks-turn-amazon-alexa-google-home-into-secret-eavesdroppers.html'):
+
+    source = requests.get(link).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('div', id='drr-container')
+        body_par = []
+        for i in body.find_all('p'):
+            body_par.append(i.text)
+
+        # remove external reading and small paragraph 'The researchers explained'
+        del body_par[3:5]
+
+        print('Link 4 Privacy - Success!')
+
+        return {'link': link, 'category': 'privacy', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 4 Privacy - Error Occurred..')
+
+
+def privacy_05(link='https://venturebeat.com/2019/04/16/how-to-prevent-alexa-cortana-siri-google-assistant-and-bixby-from-recording-you/'):
+
+    source = requests.get(link).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('article', id='post-2482858')
+        body_par = []
+        for i in body.find_all(['p', 'li']):
+            body_par.append(i.text)
+
+        # remove image descriptions: Above
+        body_par = [elm for elm in body_par if not elm.startswith('Above')]
+
+        print('Link 5 Privacy - Success!')
+
+        return {'link': link, 'category': 'privacy', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 5 Privacy - Error Occurred..')
+
+
+def privacy_06(link='https://www.washingtonpost.com/technology/2019/04/23/how-nest-designed-keep-intruders-out-peoples-homes-effectively-allowed-hackers-get/'):
+
+    source = requests.get(link).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('div', class_='article-body')
+        body_par = []
+        for i in body.find_all('p'):
+            body_par.append(i.text)
+
+        print('Link 6 Privacy - Success!')
+
+        # Load comments from downloaded iframe
+        soup = BeautifulSoup(open('./Comments/Talk.html'), 'html.parser')
+        comm = soup.find_all(
+            'div', class_="talk-plugin-rich-text-text CommentContent__content___ZGv1q")
+        comm_par = []
+
+        for i in comm:
+            comm_par.append(i.text)
+
+        for num, i in enumerate(comm_par):
+            # remove all "\n"
+            comm_par[num] = re.sub('[\\n]', '', i)
+
+        return {'link': link, 'category': 'privacy', 'body_par': body_par, 'comment_par': comm_par}
+
+    except:
+        print('Link 6 Privacy - Error Occurred..')
+
+
+train_data = privacy_06()
