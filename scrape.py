@@ -2,10 +2,12 @@
 import csv
 import json
 import re
+import builtwith
 
 import requests
 from bs4 import BeautifulSoup
 from user_agent import generate_user_agent
+
 
 # generate a user agent
 headers = {
@@ -268,4 +270,199 @@ def privacy_06(link='https://www.washingtonpost.com/technology/2019/04/23/how-ne
         print('Link 6 Privacy - Error Occurred..')
 
 
-train_data = privacy_06()
+def privacy_07(link='https://www.iotworldtoday.com/2019/09/03/smart-home-companies-are-walking-a-privacy-tightrope/'):
+
+    source = requests.get(link).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find(
+            'div', class_='columns small-12 single-post-content_text-container')
+        body_par = []
+        for i in body.find_all('p'):
+            body_par.append(i.text)
+
+        # remove element inside square brackets which are ads
+        body_par = [brk for brk in body_par if not brk.startswith('[')]
+
+        # remve all \xa0
+        for num, i in enumerate(body_par):
+            body_par[num] = re.sub('[\\xa0]', '', i)
+
+        print('Link 7 Privacy - Success!')
+
+        return {'link': link, 'category': 'privacy', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 7 Privacy - Error Occurred..')
+
+
+def privacy_08(link='https://www.apple.com/newsroom/2019/08/improving-siris-privacy-protections/'):
+
+    source = requests.get(link).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body_par = []
+        for i in soup.find_all('div', class_='pagebody-copy'):
+            body_par.append(i.text)
+
+        # remove all "\n"
+        for num, i in enumerate(body_par):
+            body_par[num] = re.sub('[\\n]', '', i)
+
+        print('Link 8 Privacy - Success!')
+
+        return {'link': link, 'category': 'privacy', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 8 Privacy - Error Occurred..')
+
+
+def privacy_09(link='https://www.theguardian.com/technology/2019/jul/26/apple-contractors-regularly-hear-confidential-details-on-siri-recordings'):
+
+    source = requests.get(link).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find(
+            'div', class_='content__article-body from-content-api js-article__body')
+        body_par = []
+        for i in body.find_all('p'):
+            body_par.append(i.text)
+
+        print('Link 9 Privacy - Success!')
+
+        return {'link': link, 'category': 'privacy', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 9 Privacy - Error Occurred..')
+
+
+def privacy_10(link='http://www.rmmagazine.com/2019/10/01/smart-home-devices-and-privacy-risk/'):
+
+    source = requests.get(link, headers=headers).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('div', class_='post-21656 post type-post status-publish format-standard has-post-thumbnail hentry category-columns category-compliance category-cyber-risk category-emerging-risks category-featured-1 category-forefront category-international category-legal-risk category-reputation-risk category-security category-technology tag-technology')
+        body_par = []
+        for i in body.find_all('p'):
+            body_par.append(i.text)
+
+        # remove autothor and date first and last 4 elements
+        body_par = body_par[1:19]
+
+        print('Link 10 Privacy - Success!')
+
+        return {'link': link, 'category': 'privacy', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 10 Privacy - Error Occurred..')
+
+
+def privacy_11(link='https://buildyoursmarthome.co/home-automation/the-privacy-of-data-how-secure-are-we-in-our-smart-homes/'):
+
+    source = requests.get(link).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('div', class_='post-content description')
+        body_par = []
+        for i in body.find_all('p'):
+            body_par.append(i.text)
+
+        # remove empty and "\xa0"
+        for num, i in enumerate(body_par):
+            body_par[num] = re.sub('[\\xa0]', '', i)
+
+        body_par = list(filter(None, body_par))
+
+        print('Link 11 Privacy - Success!')
+
+        return {'link': link, 'category': 'privacy', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 11 Privacy - Error Occurred..')
+
+
+def privacy_12(link='https://www.welivesecurity.com/2019/10/08/consumer-perceptions-security-privacy-connected-home/'):
+
+    source = requests.get(link).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find(
+            'div', class_='col-md-10 col-sm-10 col-xs-12 formatted')
+        body_par = []
+
+        for i in body.find_all('p'):
+            body_par.append(i.text)
+
+        print('Link 12 Privacy - Success!')
+
+        return {'link': link, 'category': 'privacy', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 12 Privacy - Error Occurred..')
+
+
+def privacy_13(link='https://en.wikipedia.org/wiki/Privacy#cite_note-67'):
+
+    source = requests.get(link).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('div', class_='mw-parser-output')
+        body_par = []
+
+        for i in body.find_all('p'):
+            body_par.append(i.text)
+
+        # remove "\n" and [d+]
+        for num, i in enumerate(body_par):
+            body_par[num] = re.sub('\[\d+\]|\\n', '', i)
+
+        print('Link 13 Privacy - Success!')
+
+        return {'link': link, 'category': 'privacy', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 13 Privacy - Error Occurred..')
+
+
+def privacy_14(link='https://en.wikipedia.org/wiki/Security'):
+
+    source = requests.get(link).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('div', class_='mw-parser-output')
+        body_par = []
+
+        for i in body.find_all(['p', 'li']):
+            body_par.append(i.text)
+
+        # remove references and contents
+        body_par = [elm for elm in body_par if not (
+            elm.startswith('^') or elm[0].isdigit())]
+
+        # eliminate external link
+        body_par = body_par[: len(body_par)-2]
+
+        # remove "\n" and [d+]
+        for num, i in enumerate(body_par):
+            body_par[num] = re.sub('\[\d+\]|\\n', '', i)
+
+        # remove the empty element in the list
+        body_par = list(filter(None, body_par))
+
+        print('Link 14 Privacy - Success!')
+
+        return {'link': link, 'category': 'privacy', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 14 Privacy - Error Occurred..')
+
+
+train_data = privacy_14()
