@@ -103,20 +103,20 @@ def scrape02(link='https://thewirecutter.com/reviews/amazon-echo-vs-google-home/
     return content
 
 
-# Populate the dictionary
-data['Link_1'] = scrape01()
-data['Link_2'] = scrape02()
+# # Populate the dictionary
+# data['Link_1'] = scrape01()
+# data['Link_2'] = scrape02()
 
-# write csv
-with open('data.csv', 'w', newline='') as csvfile:
-    fieldnames = ['Link_1', 'Link_2']
-    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+# # write csv
+# with open('data.csv', 'w', newline='') as csvfile:
+#     fieldnames = ['Link_1', 'Link_2']
+#     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
-    writer.writeheader()
-    writer.writerow(data)
+#     writer.writeheader()
+#     writer.writerow(data)
 
-# webscraping privacy
-privacy_train = {}
+# # webscraping privacy
+# privacy_train = {}
 
 
 def privacy_01(link='https://www.cisecurity.org/newsletter/security-and-privacy-in-the-connected-home/'):
@@ -465,4 +465,357 @@ def privacy_14(link='https://en.wikipedia.org/wiki/Security'):
         print('Link 14 Privacy - Error Occurred..')
 
 
-train_data = privacy_14()
+def trust_01(link='https://www.zdnet.com/article/do-we-really-trust-smart-devices/'):
+
+    source = requests.get(link).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('div', class_='storyBody')
+        body_par = []
+
+        for i in body.find_all('p',):
+            body_par.append(i.text)
+
+        # remove previous coverage
+        body_par = body_par[1:24]
+
+        # remove external reading
+        body_par = [
+            elm for elm in body_par if not elm.startswith('Read also:')]
+
+        print('Link 1 Trust - Success!')
+
+        return {'link': link, 'category': 'trust', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 1 Trust - Error Occurred..')
+
+
+def trust_02(link='https://en.wikipedia.org/wiki/Trust_(social_science)'):
+
+    source = requests.get(link).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('div', class_='mw-parser-output')
+        body_par = []
+
+        for i in body.find_all(['p', 'li']):
+            body_par.append(i.text)
+
+        # remove See also and References
+        body_par = body_par[77:126]
+
+        # remove contents
+        body_par = [elm for elm in body_par if not elm[0].isdigit()]
+
+        # remove references number and "\n"
+        for num, i in enumerate(body_par):
+            body_par[num] = re.sub('\[\d+\]|\\n', '', i)
+
+        print('Link 2 Trust - Success!')
+
+        return {'link': link, 'category': 'trust', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 2 Trust - Error Occurred..')
+
+
+def trust_03(link='https://www.internetsociety.org/resources/doc/2019/trust-opportunity-exploring-consumer-attitudes-to-iot/'):
+
+    source = requests.get(link).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('div', class_='body-text')
+        body_par = []
+
+        for i in body.find_all(['p', 'li']):
+            body_par.append(i.text)
+
+        # remove download and view (16, 17)
+        # remove Notes 74
+        body_par = body_par[0: 16] + body_par[18: 74]
+
+        print('Link 3 Trust - Success!')
+
+        return {'link': link, 'category': 'trust', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 3 Trust - Error Occurred..')
+
+
+def trust_04(link='https://irishtechnews.ie/swearing-by-smart-homes-analysing-trust-in-smart-home-technology/'):
+
+    source = requests.get(link, headers=headers).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('span', class_='cb-itemprop')
+        body_par = []
+
+        for i in body.find_all('p'):
+            body_par.append(i.text)
+
+        # remove formatting "\xa0",  empty and delete first row
+        body_par = list(filter(None, body_par[1:]))
+
+        for num, i in enumerate(body_par):
+            body_par[num] = re.sub('\\xa0', ' ', i)
+
+        print('Link 4 Trust - Success!')
+
+        return {'link': link, 'category': 'trust', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 4 Trust - Error Occurred..')
+
+
+def trust_05(link='https://www.businessinsider.com/smart-home-devices-are-worth-it-2018-8?r=US&IR=T'):
+
+    source = requests.get(link, headers=headers).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('section', class_='slideshow-container typography')
+        body_par = []
+
+        for i in body.find_all('p'):
+            body_par.append(i.text)
+
+        print('Link 5 Trust - Success!')
+
+        return {'link': link, 'category': 'trust', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 5 Trust - Error Occurred..')
+
+
+def trust_06(link='https://www.mckinsey.com/business-functions/mckinsey-digital/our-insights/a-smart-home-is-where-the-bot-is'):
+
+    source = requests.get(link, headers=headers).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('article', class_='main-copy text-longform main')
+        body_par = []
+
+        for i in body.find_all('p'):
+            body_par.append(i.text)
+
+        # remove about the authors and empty elements
+        body_par = list(filter(None, body_par[0:23]))
+
+        # strip leading and trailling whitespace
+        body_par = [elm.strip() for elm in body_par]
+
+        print('Link 6 Trust - Success!')
+
+        return {'link': link, 'category': 'trust', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 6 Trust - Error Occurred..')
+
+
+def trust_07(link='https://www.csoonline.com/article/2948583/digital-trust-in-the-iot-era-54-of-people-dont-trust-security-protecting-their-info.html'):
+
+    source = requests.get(link, headers=headers).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('div', id='drr-container')
+        body_par = []
+
+        for i in body.find_all('p'):
+            body_par.append(i.text)
+
+        print('Link 7 Trust - Success!')
+
+        return {'link': link, 'category': 'trust', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 7 Trust - Error Occurred..')
+
+
+def trust_08(link='https://www.iottechexpo.com/2019/06/smart-home/5-key-considerations-building-smart-home-system-develco-iot/'):
+
+    source = requests.get(link, headers=headers).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('div', id='post-inset')
+        body_par = []
+
+        for i in body.find_all('p'):
+            body_par.append(i.text)
+
+        # remove copany reference
+        body_par = body_par[0:7]
+
+        # remove formatting "\xa0" and newlines "\n" and strip trailling and leading white spaces
+        for num, i in enumerate(body_par):
+            body_par[num] = re.sub('(\xa0)|(\n)', ' ', i).strip()
+
+        print('Link 8 Trust - Success!')
+
+        return {'link': link, 'category': 'trust', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 8 Trust - Error Occurred..')
+
+def trust_09(link = 'https://www.vivint.com/resources/article/how-smart-homes-control-home'):
+    
+    source = requests.get(link, headers=headers).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('div', class_='article circular-light')
+        body_par = []
+
+        for i in body.find_all(['p', 'li']):
+            body_par.append(i.text)
+
+        body_par = [elm for elm in body_par if not elm.startswith(('Explore more', '\r\nRelated'))]
+
+        # remove empty elements
+        body_par = list(filter(None, body_par))
+
+        print('Link 9 Trust - Success!')
+
+        return {'link': link, 'category': 'trust', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 9 Trust - Error Occurred..')
+
+
+def trust_10(link = 'https://www.safewise.com/faq/home-automation/home-automation-benefits/'):
+
+    source = requests.get(link, headers=headers).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('div', class_='wpb_wrapper')
+        body_par = []
+
+        for i in body.find_all(['p', 'li']):
+            body_par.append(i.text)
+
+        # remove formatting " \xa0"
+        for num, i in enumerate(body_par):
+            body_par[num] = re.sub('\xa0', ' ', i)
+
+        print('Link 10 Trust - Success!')
+
+        return {'link': link, 'category': 'trust', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 10 Trust - Error Occurred..')
+
+
+def trust_11(link = 'https://technoliving.com/smart-homes-are-the-future/'):
+
+
+    source = requests.get(link, headers=headers).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('div', class_='entry-content')
+        body_par = []
+
+        for i in body.find_all(['p', 'li']):
+            body_par.append(i.text)
+
+        # remove first, last and the empty elements in the list
+        body_par = list(filter(None, body_par[1:-1]))
+
+        print('Link 11 Trust - Success!')
+
+        return {'link': link, 'category': 'trust', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 11 Trust - Error Occurred..')
+
+def trust_12(link = 'https://powerfullsystems.com/top-5-advantages-of-home-automation/'):
+
+    source = requests.get(link, headers=headers).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('div', class_='et_pb_section et_pb_section_1 et_section_regular')
+        body_par = []
+
+        for i in body.find_all(['p', 'li']):
+            body_par.append(i.text)
+
+        # remove formatting "\xa0"
+        for num, i in enumerate(body_par):
+            body_par[num] = re.sub('\\xa0', ' ', i)
+
+        print('Link 12 Trust - Success!')
+
+        return {'link': link, 'category': 'trust', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 12 Trust - Error Occurred..')
+
+
+def trust_13(link = 'https://medium.designit.com/a-place-we-call-smart-home-f0feb5c1fe47'):
+    
+    source = requests.get(link, headers=headers).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('section', class_='dv dw dx dy dz')
+        body_par = []
+
+        for i in body.find_all(['p', 'li']):
+            body_par.append(i.text)
+
+        print('Link 13 Trust - Success!')
+
+        return {'link': link, 'category': 'trust', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 13 Trust - Error Occurred..')
+
+
+def trust_14(link = 'https://medium.designit.com/introducing-trusting-invisibility-f367c6376fff'):
+
+    source = requests.get(link, headers=headers).text
+    soup = BeautifulSoup(source, 'lxml')
+
+    try:
+        body = soup.find('section', class_='dv dw dx dy dz')
+        body_par = []
+
+        for i in body.find_all('p'):
+            body_par.append(i.text)
+
+        # remove references to the company
+        body_par = body_par[:-1]
+
+        print('Link 14 Trust - Success!')
+
+        return {'link': link, 'category': 'trust', 'body_par': body_par, 'comment_par': []}
+
+    except:
+        print('Link 14 Trust - Error Occurred..')
+
+
+data = []
+source = []
+
+source = [privacy_01(), privacy_02(), privacy_03(), privacy_04(), privacy_05(), privacy_06(), privacy_07(), privacy_08(), 
+          privacy_09(), privacy_10(), privacy_11(), privacy_12(), privacy_13(), privacy_14(),
+          trust_01(), trust_02(), trust_03(), trust_04(), trust_05(), trust_06(), trust_07(), trust_08(), trust_09(),
+          trust_10(), trust_11(), trust_12(), trust_13(), trust_14()]
+
+for i in source:
+    data.append(i)
+
+with open('train_data.json', 'w') as outfile:
+    # json.dump each dict individually and write the commas and new lines manually
+    outfile.write(',\n'.join(json.dumps(i) for i in data))
+
+
