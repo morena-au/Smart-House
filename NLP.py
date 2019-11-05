@@ -12,7 +12,7 @@ import pyLDAvis
 import pyLDAvis.gensim
 import matplotlib.pyplot as plt
 from nltk.corpus import stopwords
-from gensim.models import CoherenceModel
+from gensim.models import CoherenceModel, TfidfModel
 from gensim.utils import simple_preprocess
 from nltk.corpus import wordnet as wn
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
@@ -55,6 +55,7 @@ def sent_to_words(webpages):
     for webpage in webpages:
         pars = []
         for paragraph in webpage:
+            # simeple preprocess remove also digits
             # deacc=True removes punctuations
             pars = pars + simple_preprocess(str(paragraph), deacc=True)
 
@@ -65,6 +66,10 @@ def sent_to_words(webpages):
 
 # turn a generator into a list
 train_words = list(sent_to_words(body_par))
+
+# num characters for each paragraph
+print('Lenght words for each webpage: \n', [len(word) for word in train_words])
+
 
 # Train Bigram and Trigram Models
 # higher threshold fewer phrases.
@@ -143,7 +148,46 @@ train_words_trigrams = make_trigrams(train_words_nostop)
 nlp = spacy.load('en', disable=['parser', 'ner'])
 
 # Do lemmatization keeping only noun, adj, vb, adv as per default
-train_words_lemm = lemmatization(train_words_bigrams)
+train_words_lemmatized = lemmatization(train_words_trigrams)
+
+# Create Dictionary
+id2word = corpora.Dictionary(train_words_lemmatized)
+
+# Create Corpus
+texts = train_words_lemmatized
+
+# Term Document Frequency >> (id, freq) for each page
+corpus = [id2word.doc2bow(text) for text in texts]
+
+for page in corpus:
+    print([[id2word[id], freq] for id, freq in page])
+    print('\n\n')
+    break
+
+# Create the TF-IDF model
+# Term frequency = 'n' (Occurence frequency of term in document)
+# Document frequency = 't' (non-zero inverse collection frequency)
+# Document lenght normalization = 'c' (cosine normalization)
+tfidf = TfidfModel(corpus, smartirs='ntc')
+
+tfidf_list = []
+
+for page in tfidf[corpus]:
+    tfidf_list = tfidf_list + \
+        [(id2word[id], np.around(freq, decimals=2)) for id, freq in page]
+
+
+# from here
+# Sort frequency
+sorted(dist.items(), key=lambda x: x[1], reverse=True)
+
+# Smallest TF-IDF: words commonly used across all documents and rarely used in the particular document.
+print('Smallest tfidf:\n{}\n'.format(feature_names[sorted_tfidf_index[:10]]))
+
+# Largest TF-IDF: Term that appears frequently in a particular document, but not often in the corpus.
+# "paragraph hedline - topics"
+print('Largest tfidf: \n{}'.format(feature_names[sorted_tfidf_index[:-11:-1]]))
+
 
 # data = pd.read_csv('data.csv')
 
@@ -172,7 +216,6 @@ train_words_lemm = lemmatization(train_words_bigrams)
 
 # # Counting vocabulary of words
 # link_1.shape  # num of paragraphs
-# link_1['text'].str.len()  # num characters for each paragraph
 
 # # Delete paragraphs with 0 characters
 # link_1 = link_1.loc[link_1['text'].str.len() > 0, :]
@@ -181,12 +224,6 @@ train_words_lemm = lemmatization(train_words_bigrams)
 
 # # number of tokens for each string
 # link_1['text'].str.split().str.len().max()  # 118
-
-# # how many times a digit occurs in each string
-# # TODO: code numbers as <_digit_> tokens
-# # TODO: code date as <_date_> tokens
-# digit = link_1.loc[link_1['text'].str.count(r'\d') > 0, :]
-# link_1.loc[link_1['text'].str.count(r'\d') > 0, :]['text'].str.findall(r'\d')
 
 # # print string with digits
 # for i in range(digit.shape[0]):
