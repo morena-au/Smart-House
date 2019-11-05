@@ -816,6 +816,9 @@ for i in source:
 
 with open('train_data.json', 'w') as outfile:
     # json.dump each dict individually and write the commas and new lines manually
-    outfile.write(',\n'.join(json.dumps(i) for i in data))
+    outfile.write(
+        '[' + 
+        ',\n'.join(json.dumps(i) for i in data) +
+        ']')
 
 
