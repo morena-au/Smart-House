@@ -16,11 +16,13 @@ from gensim.models import CoherenceModel, TfidfModel
 from gensim.utils import simple_preprocess
 from nltk.corpus import wordnet as wn
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from collections import defaultdict
 
 # Enable logging for gensim - optional
 import logging
 logging.basicConfig(
     format='%(asctime)s : %(levelname)s : %(message)s', level=logging.ERROR)
+
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -28,6 +30,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 with open('train_data.json', 'r') as f:
     train_data = json.load(f)
+
 
 link = []
 category = []
@@ -39,6 +42,7 @@ for item in train_data:
     category.append(item['category'])
     body_par.append(item['body_par'])
     comment_par.append(item['comment_par'])
+
 
 # nltk.download('stopwords')  # (run python console)
 # python3 -m spacy download en  # (run in terminal)
@@ -68,8 +72,10 @@ def sent_to_words(webpages):
 train_words = list(sent_to_words(body_par))
 
 # num characters for each paragraph
-print('Lenght words for each webpage: \n', [len(word) for word in train_words])
-
+print('Lenght words for each webpage: \n\n',
+      [len(word) for word in train_words])
+print('-' * 20)
+print('\n')
 
 # Train Bigram and Trigram Models
 # higher threshold fewer phrases.
@@ -88,7 +94,10 @@ dist = nltk.FreqDist(
     [word for par in words_list for word in par if '_' in word])
 
 # Sort frequency
-sorted(dist.items(), key=lambda x: x[1], reverse=True)
+print('Sorted trigrams: \n')
+print(sorted(dist.items(), key=lambda x: x[1], reverse=True))
+print('-'*20)
+len(dist)
 
 # Remove stopwords
 
@@ -96,11 +105,11 @@ sorted(dist.items(), key=lambda x: x[1], reverse=True)
 def remove_stopwords(texts):
     '''
     Input: words' paragraphs
-    OUtput: words' paragraphs without stop words 
+    OUtput: words' paragraphs without stop words
     '''
     par_words = list(sent_to_words(texts))
 
-    return [[word for word in page if word not in stop_words] for page in train_words]
+    return [[word for word in page if word not in stop_words] for page in par_words]
 
 
 def make_bigrams(texts):
@@ -119,7 +128,7 @@ def make_trigrams(texts):
     return [trigram_mod[bigram_mod[page]] for page in texts]
 
 
-def lemmatization(texts, allowed_postags=['NOUN', 'ADJ', 'VERB', 'ADV']):
+def lemmatization(texts, allowed_postags=['NOUN', 'ADJ', 'VERB', 'ADV', 'PROPN']):
     '''
     Input: words' paragraphs without stop words
     OUtput: words' paragraphs without stop words and lemmatization
@@ -159,10 +168,9 @@ texts = train_words_lemmatized
 # Term Document Frequency >> (id, freq) for each page
 corpus = [id2word.doc2bow(text) for text in texts]
 
-for page in corpus:
-    print([[id2word[id], freq] for id, freq in page])
-    print('\n\n')
-    break
+print('\nPrint words and frequencies in the first website:\n')
+print([[(id2word[id], freq) for id, freq in page] for page in corpus[:1]])
+print('-' * 20)
 
 # Create the TF-IDF model
 # Term frequency = 'n' (Occurence frequency of term in document)
@@ -174,20 +182,60 @@ tfidf_list = []
 
 for page in tfidf[corpus]:
     tfidf_list = tfidf_list + \
-        [(id2word[id], np.around(freq, decimals=2)) for id, freq in page]
+        [(id2word[id], np.around(freq, decimals=3)) for id, freq in page]
 
-
-# from here
 # Sort frequency
-sorted(dist.items(), key=lambda x: x[1], reverse=True)
+# Convert list of tuples to dictionary value lists
+
+tfidf_dict = defaultdict(list)
+for idx, tfidf_num in tfidf_list:
+    tfidf_dict[idx].append(tfidf_num)
+
+print('\nTF-IDF for each words: \n')
+sorted_tfidf = sorted(tfidf_dict.items(), key=lambda x: x[1], reverse=True)
 
 # Smallest TF-IDF: words commonly used across all documents and rarely used in the particular document.
-print('Smallest tfidf:\n{}\n'.format(feature_names[sorted_tfidf_index[:10]]))
+print('Smallest 10 tfidf:\n{}\n'.format(sorted_tfidf[:-11:-1]))
 
 # Largest TF-IDF: Term that appears frequently in a particular document, but not often in the corpus.
-# "paragraph hedline - topics"
-print('Largest tfidf: \n{}'.format(feature_names[sorted_tfidf_index[:-11:-1]]))
+print('Largest 10 tfidf: \n{}'.format(sorted_tfidf[:11]))
+print('-' * 20)
 
+# Build LDA model
+lda_model = gensim.models.ldamodel.LdaModel(corpus=corpus,
+                                            id2word=id2word,
+                                            num_topics=10,
+                                            random_state=100,
+                                            update_every=1,
+                                            chunksize=100,  # take all documents into account
+                                            passes=10,
+                                            alpha='auto',
+                                            per_word_topics=True)
+
+
+for topic, keyword in lda_model.print_topics():
+    print('Topic: ', topic)
+    print('Keywords: ', keyword)
+    print('\n')
+print('-'*20)
+
+page_lda = lda_model[corpus]
+
+# Compute model perplexity and coherence score
+# a measure of how good the model is. lower the better.
+print('\nPerplexity: ', lda_model.log_perplexity(corpus))
+
+# Compute Coherence Score
+coherence_model_lda = CoherenceModel(
+    model=lda_model, texts=train_words_lemmatized, dictionary=id2word, coherence='c_v')
+coherence_lda = coherence_model_lda.get_coherence()
+print('\nCoherence Score: ', coherence_lda)
+print('-'*10)
+
+# Visualize the topics
+pyLDAvis.enable_notebook()
+vis = pyLDAvis.gensim.prepare(lda_model, corpus, id2word)
+vis
 
 # data = pd.read_csv('data.csv')
 
