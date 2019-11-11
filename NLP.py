@@ -230,12 +230,32 @@ coherence_model_lda = CoherenceModel(
     model=lda_model, texts=train_words_lemmatized, dictionary=id2word, coherence='c_v')
 coherence_lda = coherence_model_lda.get_coherence()
 print('\nCoherence Score: ', coherence_lda)
-print('-'*10)
+print('-'*20)
 
-# Visualize the topics
-pyLDAvis.enable_notebook()
-vis = pyLDAvis.gensim.prepare(lda_model, corpus, id2word)
-vis
+# # Visualize the topics
+# pyLDAvis.enable_notebook()
+# vis = pyLDAvis.gensim.prepare(lda_model, corpus, id2word)
+# vis
+
+# Build LDA Mallet Model
+mallet_path = 'mallet-2.0.8/bin/mallet'
+ldamallet = gensim.models.wrappers.LdaMallet(
+    mallet_path, corpus=corpus, num_topics=5, id2word=id2word)
+
+
+for topic, keyword in ldamallet.show_topics(formatted=False):
+    print('Topic: ', topic)
+    print('Keywords: ', keyword)
+    print('\n')
+print('-'*20)
+
+coherence_model_ldamallet = CoherenceModel(
+    model=ldamallet, texts=train_words_lemmatized, dictionary=id2word, coherence='c_v')
+
+coherence_ldamallet = coherence_model_ldamallet.get_coherence()
+# Choerence score lower than lda_model
+print('\nCoherence Score: ', coherence_ldamallet)
+print('-'*20)
 
 # data = pd.read_csv('data.csv')
 
