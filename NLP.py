@@ -213,23 +213,24 @@ lda_model = gensim.models.ldamodel.LdaModel(corpus=corpus,
                                             per_word_topics=True)
 
 
+print('\n LDA model topics: \n')
 for topic, keyword in lda_model.print_topics():
     print('Topic: ', topic)
     print('Keywords: ', keyword)
-    print('\n')
 print('-'*20)
 
 page_lda = lda_model[corpus]
 
 # Compute model perplexity and coherence score
 # a measure of how good the model is. lower the better.
+print('\nPerplexity and Choerence Score for LDA model:')
 print('\nPerplexity: ', lda_model.log_perplexity(corpus))
 
 # Compute Coherence Score
 coherence_model_lda = CoherenceModel(
     model=lda_model, texts=train_words_lemmatized, dictionary=id2word, coherence='c_v')
 coherence_lda = coherence_model_lda.get_coherence()
-print('\nCoherence Score: ', coherence_lda)
+print('Coherence Score: ', coherence_lda)
 print('-'*20)
 
 # # Visualize the topics
@@ -243,10 +244,10 @@ ldamallet = gensim.models.wrappers.LdaMallet(
     mallet_path, corpus=corpus, num_topics=5, id2word=id2word)
 
 
+print('\n LDA Mallet model topics: \n')
 for topic, keyword in ldamallet.show_topics(formatted=False):
     print('Topic: ', topic)
     print('Keywords: ', keyword)
-    print('\n')
 print('-'*20)
 
 coherence_model_ldamallet = CoherenceModel(
@@ -254,8 +255,160 @@ coherence_model_ldamallet = CoherenceModel(
 
 coherence_ldamallet = coherence_model_ldamallet.get_coherence()
 # Choerence score lower than lda_model
+print('Choerence Score for LDA Mallet model:')
 print('\nCoherence Score: ', coherence_ldamallet)
 print('-'*20)
+
+# Find the optimal number of topics
+def LdaMallet_coherence_values(dictionary, corpus, texts, limit, start = 2, step = 3):
+    '''
+    Compute c_v coherence for various number of topics
+    
+    Parameters:
+    ---------
+    dictionary: Gensim dictionary
+    corpus: Gensim corpus
+    texts: list of input texts
+    limit: max num of topics
+    
+    Returns:
+    ---------
+    model_list: list of LDA topic models
+    coherence_values: corresponding to the LDA model
+    '''
+
+    coherence_values = []
+    model_list = []
+
+    for num_topics in range(start, limit, step):
+        model = gensim.models.wrappers.LdaMallet(mallet_path, corpus = corpus, num_topics = num_topics, id2word = dictionary,)
+        model_list.append(model)
+
+        coherencemodel = CoherenceModel(model = model, texts = texts, dictionary = dictionary, coherence = 'c_v')
+        coherence_values.append(coherencemodel.get_coherence())
+
+    return model_list, coherence_values
+
+def LDA_coherence_values(dictionary, corpus, texts, limit, chunksize = 100, start=2, step=3):
+    '''
+    Compute c_v coherence for various number of topics
+
+    Parameters:
+    ---------
+    dictionary: Gensim dictionary
+    corpus: Gensim corpus
+    texts: list of input text 
+    chunksize: number of documents to be used in each training chunk
+    limit: max num of topics
+
+    Returns:
+    ---------
+    model_list: list of LDA topic
+    coherence_values: corresponding to the LDA model
+    '''
+
+    coherence_values = []
+    model_list = []
+
+    for num_topics in range(start, limit, step):
+        model = gensim.models.ldamodel.LdaModel(corpus=corpus, id2word=dictionary,
+                                                num_topics=num_topics, random_state=100, 
+                                                update_every=1, chunksize=100, passes=10, 
+                                                alpha='auto', per_word_topics=True)
+        
+        model_list.append(model)
+
+        coherencemodel = CoherenceModel(model = model, texts = texts, dictionary = dictionary, coherence = 'c_v')
+        coherence_values.append(coherencemodel.get_coherence())
+
+    return model_list, coherence_values
+
+
+model_list_mallet, coherence_values_mallet = LdaMallet_coherence_values(dictionary=id2word, corpus=corpus, 
+                                                          texts=train_words_lemmatized, start=8, limit=15, step=1)
+
+# show graph
+limit = 15
+start=8
+step=1
+x = range(start, limit, step)
+plt.plot(x, coherence_values_mallet)
+plt.xlabel('Num Topics')
+plt.ylabel('Coherence score')
+plt.title('Coherence Scores with LDA Mallet Algorith Implementation')
+plt.savefig('Topics_Coher_LDA_Mallet')
+plt.show()
+
+
+
+print('\nLDA Mallet: \n')
+for num, cv in zip(x, coherence_values_mallet):
+    print('Nun Topics =', num, ' has Coherence Value of', round(cv, 4))
+print('-'*20)
+
+model_list, coherence_values = LDA_coherence_values(dictionary=id2word, corpus=corpus, 
+                                                          texts=train_words_lemmatized, start=8, limit=15, step=1)
+
+# show graph
+limit = 15
+start=8
+step=1
+x = range(start, limit, step)
+plt.plot(x, coherence_values)
+plt.xlabel('Num Topics')
+plt.ylabel('Coherence score')
+plt.title('Coherence Scores with LDA Algorith Implementation')
+plt.savefig('Topics_Coher_LDA_Model')
+plt.show()
+
+print('\nLDA model: \n')
+for num, cv in zip(x, coherence_values):
+    print('Nun Topics =', num, ' has Coherence Value of', round(cv, 4))
+print('-'*20)
+
+# Usually LDA mallet performs better pick the model with the highest coherence score
+
+optimal_model = model_list_mallet[np.argmax(coherence_values_mallet)]
+model_topics = optimal_model.show_topics(formatted = False)
+
+print('\n LDA Mallet topics: \n')
+for topic, keyword in optimal_model.print_topics(num_words=10):
+    print('Topic: ', topic)
+    print('Keywords: ', keyword)
+print('-'*20)
+
+# Find the dominant topic in each sentence
+# Find the topic number with the highest percentage contributio in that document
+
+def dominant_topic(ldamodel = lda_model, corpus=corpus, texts=body_par):
+    # init dataframe
+    topics_df = pd.DataFrame()
+
+    # GET MAIN TOPIC IN EACH PARAGRAPH
+    # Get throught the pages
+    for num, page in enumerate(lda_model[corpus]):
+        # Get throught the paragraphs
+        for num_par, parag in enumerate(page):
+            parag = sorted(parag, key= lambda x: (x[1]), reverse=True)
+        
+            for j, (topic_num, prop_topic) in enumerate([(5, 0.72200567), (8, 0.27469027)]):
+                if j == 0: # => dominant topic
+                    # Get list prob. * keywords from the topic
+                    pk = lda_model.show_topic(topic_num)
+                    topic_keywords = ', '.join([word for word, prop in pk])
+                    # Add topic number, probability, keywords and original text to the dataframe
+                    topics_df = topics_df.append(pd.Series([int(topic_num), round(prop_topic, 4),
+                                                        topic_keywords, texts[num][num_par]]),
+                                                        ignore_index=True)
+                
+                else:
+                    break
+                
+    # Add columns name
+    topics_df.columns = ['Dominant_Topic', 'Perc_Contribution', 'Topic_Keywords', 'Original_Text']
+
+    return topics_df
+
 
 # data = pd.read_csv('data.csv')
 
