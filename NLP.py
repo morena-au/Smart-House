@@ -1,25 +1,29 @@
-import warnings
 import json
+# Enable logging for gensim - optional
+import logging
 import re
+import warnings
+from collections import defaultdict, Counter
 
 import gensim
 import gensim.corpora as corpora
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 import nltk
 import numpy as np
 import pandas as pd
-import spacy
 import pyLDAvis
 import pyLDAvis.gensim
-import matplotlib.pyplot as plt
-from nltk.corpus import stopwords
+import seaborn as sns
+import spacy
+from wordcloud import WordCloud, STOPWORDS
 from gensim.models import CoherenceModel, TfidfModel
 from gensim.utils import simple_preprocess
+from nltk.corpus import stopwords
 from nltk.corpus import wordnet as wn
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
-from collections import defaultdict
 
-# Enable logging for gensim - optional
-import logging
 logging.basicConfig(
     format='%(asctime)s : %(levelname)s : %(message)s', level=logging.ERROR)
 
@@ -390,8 +394,6 @@ print('-'*20)
 # Find the dominant topic in each sentence
 # Find the topic number with the highest percentage contributio in that document
 
-
-
 def dominant_topic(ldamodel = lda_model, corpus=corpus, texts=body_par):
     # init dataframe
     topics_df = pd.DataFrame()
@@ -418,9 +420,10 @@ def dominant_topic(ldamodel = lda_model, corpus=corpus, texts=body_par):
                 break
                 
     # Add columns name
-    topics_df.columns = ['Dominant_Topic', 'Perc_Contribution', 'Topic_Keywords', 'Original_Text']
+    topics_df.columns = ['Dominant_Topic', 'Perc_Contribution', 'Topic_Keywords', 'Text']
 
     return topics_df
+
 
 df_topic_keywords = dominant_topic(ldamodel=optimal_model, corpus=corpus, texts=body_par)
 
@@ -441,7 +444,7 @@ for i, grp in df_topic_grouped:
 df_topic_sorted.reset_index(drop = True, inplace = True)
 df_topic_sorted.columns = ['Topic_Num', "Topic_Perc_Contrib", "Keywords", "Text"]
 
-df_topic_sorted.head(10)
+df_topic_sorted.head(20)
 
 # Topic distribution across documents
 # To understand the volumne and distribution of topics in order to check how widely it was discussed
@@ -461,6 +464,126 @@ df_dominant_topics.reset_index(drop = True, inplace = True)
 df_dominant_topics.columns = ['Topic_Num', 'Topic_Keywords', 'Num_Documents', 'Perc_Documents']
 
 df_dominant_topics.head()
+
+# Frequency distribution of word counts in documents
+# How big the documents are as a whole in term of words count
+
+# Expand display output in terminal
+pd.options.display.max_colwidth = 100
+
+df_topic_text = dominant_topic(ldamodel=optimal_model, corpus=corpus, texts=train_words_lemmatized)
+
+words_len = [len(words) for words in df_topic_text.Text]
+
+plt.figure(figsize=(16,7), dpi=160)
+plt.hist(words_len, bins = 28, color='navy')
+plt.text(1000, 4.5, "Mean   : " + str(round(np.mean(words_len))))
+plt.text(1000,  4.25, "Median : " + str(round(np.median(words_len))))
+plt.text(1000,  4, "Stdev   : " + str(round(np.std(words_len))))
+plt.text(1000,  3.75, "1%ile    : " + str(round(np.quantile(words_len, q=0.01))))
+plt.text(1000,  3.5, "99%ile  : " + str(round(np.quantile(words_len, q=0.99))))
+plt.gca().set(xlim=(0, 3000), ylabel='Number of Documents', xlabel='Document Word Count')
+plt.tick_params(size=16)
+plt.xticks(np.linspace(0,3000,18))
+plt.title('Distribution of Document Word Counts', fontdict=dict(size=22))
+plt.show()
+
+cols = [color for name, color in mcolors.TABLEAU_COLORS.items()]
+
+fig, axes = plt.subplots(2,4,figsize=(15,5), dpi=160, sharex=True, sharey=True)
+
+# for each topic
+for i, ax in enumerate(axes.flatten()):
+    # Extract document within the specific topic
+    df_topic_sub = df_topic_text.loc[df_topic_text.Dominant_Topic == i, :]
+    topic_words_len = [len(words) for words in df_topic_sub.Text]
+    ax.hist(topic_words_len, bins = 5, color = cols[i])
+    ax.tick_params(axis = 'y', labelcolor = cols[i], color = cols[i])
+    ax.set(xlim=(0, 3000), xlabel = 'Document Word Count')
+    ax.set_ylabel('Number of Documents', color = cols[i])
+    ax.set_title('Topic: ' +str(i), fontdict = dict(size = 16, color = cols[i]))
+
+fig.tight_layout()
+#fig.subplots_adjust(top=0.90)
+plt.xticks(np.linspace(0,3000,9))
+fig.suptitle('Distribution of Document Word Counts by Dominant Topic', fontsize=22)
+plt.show()
+
+# Word coluds of Top N Keywords in Each Topic
+# with the size of the words proportional to the weight
+
+cloud = WordCloud(stopwords=stop_words,
+                  background_color='white',
+                  width=2500,
+                  height=1800,
+                  max_words=10,
+                  colormap='tab10',
+                  color_func=lambda *args, **kwargs: cols[i],
+                  prefer_horizontal=1.0)
+
+topics = optimal_model.show_topics(formatted=False)
+
+
+fig, axes = plt.subplots(2, 4, figsize=(10,10), sharex=True, sharey=True)
+
+for i, ax in enumerate(axes.flatten()):
+    fig.add_subplot(ax)
+    topic_words = dict(topics[i][1])
+    cloud.generate_from_frequencies(topic_words, max_font_size=300)
+    plt.gca().imshow(cloud)
+    plt.gca().set_title('Topic ' + str(i), fontdict=dict(size=22, weight = 'bold'))
+    plt.gca().axis('off')
+
+plt.subplots_adjust(wspace=0, hspace=0)
+plt.axis('off')
+plt.margins(x=0, y=0)
+plt.tight_layout()
+plt.show()
+
+# Let's plot word counts and the weights of each keyword in the same chart
+# Keep an eye on common words that occur in multiple topics and the one
+# whose relative frequency is more than the weight. >> those should be added to stop_words
+
+topics = optimal_model.show_topics(formatted=False)
+data_flat = [word for page in train_words_lemmatized for word in page]
+
+# words stored as dict keys and their count as dict values
+counter = Counter(data_flat)
+
+out = []
+for num, dist in topics:
+    # relative weight to the topic
+    for word, weight in dist:
+        out.append([word, num, weight, counter[word]])
+
+df = pd.DataFrame(out, columns=['word', 'topic_id', 'importance', 'word_count'])    
+
+# Plot Word Count and Weights of Topic Keywords
+fig, axes = plt.subplots(2, 4, figsize=(15,5), sharey=True, dpi=160)
+cols = [color for name, color in mcolors.TABLEAU_COLORS.items()]
+for i, ax in enumerate(axes.flatten()):
+    ax.bar(x='word', height="word_count", data=df.loc[df.topic_id==i, :], color=cols[i], width=0.5, alpha=0.3, label='Word Count')
+    ax_twin = ax.twinx()
+    ax_twin.bar(x='word', height="importance", data=df.loc[df.topic_id==i, :], color=cols[i], width=0.2, label='Weights')
+    ax.set_ylabel('Word Count', color=cols[i])
+    ax_twin.set_ylim(0, 0.20); ax.set_ylim(0, 400)
+    ax.set_title('Topic: ' + str(i), color=cols[i], fontsize=10)
+    ax.tick_params(axis='y', left=False)
+    ax.set_xticklabels(df.loc[df.topic_id==i, 'word'], rotation=30, horizontalalignment= 'right', fontsize=7)
+    ax.legend(loc='upper left'); ax_twin.legend(loc='upper right')
+
+fig.tight_layout(w_pad=2)    
+fig.suptitle('Word Count and Importance of Topic Keywords', fontsize=10, y=1.05)    
+plt.show()
+
+# Sentence Chart Colored by Topic
+# colour each word by its representative topics
+# colour document enclosing rectangle by the topic assigned
+# create more graphs!!
+
+# sklearn prediction >> improve the pipelines
+
+
 
 
 
