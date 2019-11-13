@@ -281,7 +281,7 @@ def LdaMallet_coherence_values(dictionary, corpus, texts, limit, start = 2, step
     model_list = []
 
     for num_topics in range(start, limit, step):
-        model = gensim.models.wrappers.LdaMallet(mallet_path, corpus = corpus, num_topics = num_topics, id2word = dictionary,)
+        model = gensim.models.wrappers.LdaMallet(mallet_path, corpus = corpus, num_topics = num_topics, id2word = dictionary)
         model_list.append(model)
 
         coherencemodel = CoherenceModel(model = model, texts = texts, dictionary = dictionary, coherence = 'c_v')
@@ -333,10 +333,13 @@ start=8
 step=1
 x = range(start, limit, step)
 plt.plot(x, coherence_values_mallet)
+plt.plot(x[np.argmax(coherence_values_mallet)], max(coherence_values_mallet), 'or')
+plt.text(x[np.argmax(coherence_values_mallet)]+0.2, max(coherence_values_mallet), 
+         r'({}, {})'.format(x[np.argmax(coherence_values_mallet)], np.round(max(coherence_values_mallet), 2)))
 plt.xlabel('Num Topics')
 plt.ylabel('Coherence score')
 plt.title('Coherence Scores with LDA Mallet Algorith Implementation')
-plt.savefig('Topics_Coher_LDA_Mallet')
+plt.savefig('output/Topics_Coher_LDA_Mallet_page')
 plt.show()
 
 
@@ -355,20 +358,27 @@ start=8
 step=1
 x = range(start, limit, step)
 plt.plot(x, coherence_values)
+plt.plot(x[np.argmax(coherence_values)], max(coherence_values), 'or')
+plt.text(x[np.argmax(coherence_values)]+0.2, max(coherence_values), 
+         r'({}, {})'.format(x[np.argmax(coherence_values)], np.round(max(coherence_values), 2)))
 plt.xlabel('Num Topics')
 plt.ylabel('Coherence score')
 plt.title('Coherence Scores with LDA Algorith Implementation')
-plt.savefig('Topics_Coher_LDA_Model')
+plt.savefig('output/Topics_Coher_LDA_Model_page')
 plt.show()
+
 
 print('\nLDA model: \n')
 for num, cv in zip(x, coherence_values):
     print('Nun Topics =', num, ' has Coherence Value of', round(cv, 4))
 print('-'*20)
 
-# Usually LDA mallet performs better pick the model with the highest coherence score
+# pick the model with the highest coherence score
+if max(coherence_values_mallet) > max(coherence_values):
+    optimal_model = model_list_mallet[np.argmax(coherence_values_mallet)]
+else:
+    optimal_model = model_list[np.argmax(coherence_values)]
 
-optimal_model = model_list_mallet[np.argmax(coherence_values_mallet)]
 model_topics = optimal_model.show_topics(formatted = False)
 
 print('\n LDA Mallet topics: \n')
@@ -380,34 +390,78 @@ print('-'*20)
 # Find the dominant topic in each sentence
 # Find the topic number with the highest percentage contributio in that document
 
+
+
 def dominant_topic(ldamodel = lda_model, corpus=corpus, texts=body_par):
     # init dataframe
     topics_df = pd.DataFrame()
 
-    # GET MAIN TOPIC IN EACH PARAGRAPH
+    # GET MAIN TOPIC IN EACH WEBPAGE
     # Get throught the pages
-    for num, page in enumerate(lda_model[corpus]):
-        # Get throught the paragraphs
-        for num_par, parag in enumerate(page):
-            parag = sorted(parag, key= lambda x: (x[1]), reverse=True)
-        
-            for j, (topic_num, prop_topic) in enumerate([(5, 0.72200567), (8, 0.27469027)]):
-                if j == 0: # => dominant topic
-                    # Get list prob. * keywords from the topic
-                    pk = lda_model.show_topic(topic_num)
-                    topic_keywords = ', '.join([word for word, prop in pk])
-                    # Add topic number, probability, keywords and original text to the dataframe
-                    topics_df = topics_df.append(pd.Series([int(topic_num), round(prop_topic, 4),
-                                                        topic_keywords, texts[num][num_par]]),
-                                                        ignore_index=True)
-                
-                else:
-                    break
+    for num, page in enumerate(ldamodel[corpus]):
+        # Count number of list into a list
+        if sum(isinstance(i, list) for i in page)>0:
+            page = page[0]
+
+        page = sorted(page, key= lambda x: (x[1]), reverse=True)
+    
+        for j, (topic_num, prop_topic) in enumerate(page):
+            if j == 0: # => dominant topic
+                # Get list prob. * keywords from the topic
+                pk = ldamodel.show_topic(topic_num)
+                topic_keywords = ', '.join([word for word, prop in pk])
+                # Add topic number, probability, keywords and original text to the dataframe
+                topics_df = topics_df.append(pd.Series([int(topic_num), np.round(prop_topic, 4),
+                                                    topic_keywords, texts[num]]),
+                                                    ignore_index=True)
+            else:
+                break
                 
     # Add columns name
     topics_df.columns = ['Dominant_Topic', 'Perc_Contribution', 'Topic_Keywords', 'Original_Text']
 
     return topics_df
+
+df_topic_keywords = dominant_topic(ldamodel=optimal_model, corpus=corpus, texts=body_par)
+
+df_topic_keywords.head(10)
+
+export_csv = df_topic_keywords.to_csv('output/page_topic.csv', index = None)
+
+# Find the most representative document for each topic in order to infer the topic
+
+df_topic_sorted = pd.DataFrame()
+df_topic_grouped = df_topic_keywords.groupby('Dominant_Topic')
+
+for i, grp in df_topic_grouped:
+    # populate the sorted dataframe with the page that contributed the most to the topic
+    df_topic_sorted = pd.concat([df_topic_sorted, grp.sort_values(['Perc_Contribution'], ascending = [0]).head(1)], axis = 0)
+    
+# Reset Index and change columns name
+df_topic_sorted.reset_index(drop = True, inplace = True)
+df_topic_sorted.columns = ['Topic_Num', "Topic_Perc_Contrib", "Keywords", "Text"]
+
+df_topic_sorted.head(10)
+
+# Topic distribution across documents
+# To understand the volumne and distribution of topics in order to check how widely it was discussed
+
+# Number of documents for each topic
+topic_counts = df_topic_keywords['Dominant_Topic'].value_counts()
+
+# Percentage of Documents for each Topic
+topic_contribution = np.round(topic_counts/topic_counts.sum(), 4)
+
+# Topic Number and Keywords
+topic_num_keywords = df_topic_sorted[['Topic_Num', 'Keywords']].set_index(df_topic_sorted['Topic_Num'])
+
+df_dominant_topics = pd.concat([topic_num_keywords, topic_counts, topic_contribution], axis = 1)
+
+df_dominant_topics.reset_index(drop = True, inplace = True)
+df_dominant_topics.columns = ['Topic_Num', 'Topic_Keywords', 'Num_Documents', 'Perc_Documents']
+
+df_dominant_topics.head()
+
 
 
 # data = pd.read_csv('data.csv')
