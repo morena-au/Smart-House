@@ -3,3 +3,5 @@ venv
 Smarthome Classification.pdf
 .DS_Store
 mallet-2.0.8
+*-checkpoint*
+*.html
