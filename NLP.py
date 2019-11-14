@@ -1,3 +1,5 @@
+## Page
+
 import json
 # Enable logging for gensim - optional
 import logging
@@ -47,6 +49,7 @@ for item in train_data:
     body_par.append(item['body_par'])
     comment_par.append(item['comment_par'])
 
+pd.DataFrame(link).to_csv('output/links.csv', index = None)
 
 # nltk.download('stopwords')  # (run python console)
 # python3 -m spacy download en  # (run in terminal)
@@ -101,7 +104,6 @@ dist = nltk.FreqDist(
 print('Sorted trigrams: \n')
 print(sorted(dist.items(), key=lambda x: x[1], reverse=True))
 print('-'*20)
-len(dist)
 
 # Remove stopwords
 
@@ -216,14 +218,11 @@ lda_model = gensim.models.ldamodel.LdaModel(corpus=corpus,
                                             alpha='auto',
                                             per_word_topics=True)
 
-
 print('\n LDA model topics: \n')
 for topic, keyword in lda_model.print_topics():
     print('Topic: ', topic)
     print('Keywords: ', keyword)
 print('-'*20)
-
-page_lda = lda_model[corpus]
 
 # Compute model perplexity and coherence score
 # a measure of how good the model is. lower the better.
@@ -579,7 +578,64 @@ plt.show()
 # Sentence Chart Colored by Topic
 # colour each word by its representative topics
 # colour document enclosing rectangle by the topic assigned
-# create more graphs!!
+
+# start is included but not the end
+def colour_docs(lda_model=lda_model, corpus=corpus, start=0, end=5):
+    # select part of documents that your are interested in
+    corp = corpus[start:end]
+    mycolors = [color for name, color in mcolors.TABLEAU_COLORS.items()]
+
+    # Initiate figure
+    _, axes = plt.subplots(end-start, 1, figsize=(20, (end-start)*0.95), dpi=160)
+    # Delete the the first row
+    axes[0].axis('off')
+    # Go throught each row of data
+    for i, ax in enumerate(axes):
+        if i > 0:
+            corp_cur = corp[i-1]
+            # lda_model return:
+            # > topic's id, and the probability that was assigned to it
+            # > Most probable topics per word
+            # > Phi relevance values
+            topic_percs, wordid_topics, _ = lda_model[corp_cur]
+            # return a tuple with word and dominant topic
+            word_dominanttopic = [(lda_model.id2word[word], topic[0]) for word, topic in wordid_topics]
+            # write Doc num : inside the rectangle
+            ax.text(0.01, 0.5, "Doc " + str(i-1) + ": ", verticalalignment="center",
+                    # ax.transAxes fixed coordinate system (0,0) bottom left and (1.0, 1.0) top right
+                    fontsize=16, color="black", transform=ax.transAxes, fontweight=700)
+
+            # Draw Rectangle
+            # find the dominant topic in for all the document
+            topic_prt_sorted = sorted(topic_percs, key = lambda x: (x[1]), reverse=True)
+            # (bottom, left), width, hight
+            ax.add_patch(Rectangle((0.0, 0.05), 0.99, 0.90, fill=None, alpha=1,
+                                   color=mycolors[topic_prt_sorted[0][0]], linewidth=2))
+
+            # Add the colored words
+            word_position = 0.06  ## start after the Doc num:
+            for j, (word, topics) in enumerate(word_dominanttopic):
+                # write down only the first 14 words
+                if  j < 5:
+                    ax.text(word_position, 0.5, word, horizontalalignment='left', 
+                            verticalalignment='center', fontsize=16, 
+                            color=mycolors[topics], transform=ax.transAxes, fontweight=700)
+                    word_position += 0.009 * len(word) # fowards word position for next iter
+                    # disable the original exis
+                    ax.axis('off')
+            
+            # Add the final three dots at the end of each row
+            ax.text(word_position, 0.5, '. . .', horizontalalignment='left', 
+                    verticalalignment='center', fontsize=16, color='black')
+    
+    plt.subplots_adjust(wspace=0, hspace=0)
+    plt.suptitle('Sentence Topic Coloring for Documents: ' + str(start) + ' to ' + str(end-2),
+                 fontsize=22, y=0.95, fontweight = 700)
+    plt.tight_layout()
+    plt.show()
+
+
+
 
 # sklearn prediction >> improve the pipelines
 
