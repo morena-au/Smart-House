@@ -20,6 +20,10 @@ import pyLDAvis
 import pyLDAvis.gensim
 import seaborn as sns
 import spacy
+from sklearn.manifold import TSNE
+from bokeh.plotting import figure, output_file, show
+from bokeh.models import Label
+from bokeh.io import output_notebook
 from wordcloud import WordCloud, STOPWORDS
 from gensim.models import CoherenceModel, TfidfModel
 from gensim.utils import simple_preprocess
@@ -686,6 +690,41 @@ ax2.tick_params(axis='x', labelsize=4)
 ax2.set_title('Number of Documents by Topic Weightage', fontdict=dict(size=10))
 
 plt.show()
+
+# t-SNE Clustering Chart
+# Get topic weights
+topic_weights = []
+num_topics = 10  # get it from the formula
+for row_list in lda_model[corpus]:
+    tmp = np.zeros(num_topics)
+    for i, w in row_list[0]:
+        tmp[i] = w
+    topic_weights.append(tmp)
+
+# Array of topic weights    
+arr = pd.DataFrame(topic_weights).fillna(0).values
+
+# Keep the well separated points (optional)
+arr = arr[np.amax(arr, axis=1) > 0.35]
+
+# Dominant topic position in each doc
+topic_num = np.argmax(arr, axis=1)
+
+
+# tSNE Dimension Reduction
+tsne_model = TSNE(n_components=2, verbose=1, random_state=0, angle=.99, init='pca')
+tsne_lda = tsne_model.fit_transform(arr)
+
+# Plot the topic clusters using bokeh
+output_notebook()
+n_topics = 10
+mycolors = np.array([color for name, color in mcolors.TABLEAU_COLORS.items()])
+plot = figure(title="t-SNE Clustering of {} LDA Topics".format(n_topics), 
+              plot_width=900, plot_height=700)
+plot.scatter(x=tsne_lda[:,0], y=tsne_lda[:,1], color=mycolors[topic_num])
+show(plot)
+
+
 # sklearn prediction >> improve the pipelines
 
 
