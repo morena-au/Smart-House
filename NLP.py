@@ -12,6 +12,7 @@ import gensim.corpora as corpora
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
+from matplotlib.ticker import FuncFormatter
 import nltk
 import numpy as np
 import pandas as pd
@@ -48,8 +49,6 @@ for item in train_data:
     category.append(item['category'])
     body_par.append(item['body_par'])
     comment_par.append(item['comment_par'])
-
-pd.DataFrame(link).to_csv('output/links.csv', index = None)
 
 # nltk.download('stopwords')  # (run python console)
 # python3 -m spacy download en  # (run in terminal)
@@ -342,7 +341,7 @@ plt.text(x[np.argmax(coherence_values_mallet)]+0.2, max(coherence_values_mallet)
 plt.xlabel('Num Topics')
 plt.ylabel('Coherence score')
 plt.title('Coherence Scores with LDA Mallet Algorith Implementation')
-plt.savefig('output/Topics_Coher_LDA_Mallet_page')
+# plt.savefig('output/Topics_Coher_LDA_Mallet_page')
 plt.show()
 
 
@@ -367,7 +366,7 @@ plt.text(x[np.argmax(coherence_values)]+0.2, max(coherence_values),
 plt.xlabel('Num Topics')
 plt.ylabel('Coherence score')
 plt.title('Coherence Scores with LDA Algorith Implementation')
-plt.savefig('output/Topics_Coher_LDA_Model_page')
+# plt.savefig('output/Topics_Coher_LDA_Model_page')
 plt.show()
 
 
@@ -428,7 +427,7 @@ df_topic_keywords = dominant_topic(ldamodel=optimal_model, corpus=corpus, texts=
 
 df_topic_keywords.head(10)
 
-export_csv = df_topic_keywords.to_csv('output/page_topic.csv', index = None)
+# export_csv = df_topic_keywords.to_csv('output/page_topic.csv', index = None)
 
 # Find the most representative document for each topic in order to infer the topic
 
@@ -635,8 +634,58 @@ def colour_docs(lda_model=lda_model, corpus=corpus, start=0, end=5):
     plt.show()
 
 
+# What are the most discussed topics in the documents
+def topics_per_document(model, corpus, start=0, end=1):
+    corp = corpus[start:end]
+    dominant_topics = []
+    topic_percentages = []
+    for i, corp in enumerate(corp):
+        topic_prt, _, _ = model[corp]
+        dominant_topic = sorted(topic_prt, key = lambda x: x[1], reverse=True)[0][0]
+        dominant_topics.append((i, dominant_topic))
+        topic_percentages.append(topic_prt)
+    return(dominant_topics, topic_percentages)
 
 
+dominant_topics, topic_percentages = topics_per_document(model=lda_model, corpus=corpus, end=-1) 
+
+# Distribution of Dominant Topics in each documents
+df = pd.DataFrame(dominant_topics, columns = ['Document_Id', 'Dominant_Topic'])
+dominant_topic_in_each_doc = df.groupby('Dominant_Topic').size()
+df_dominant_topic_in_each_doc = dominant_topic_in_each_doc.to_frame(name='count').reset_index()
+
+# Total topic Distribution by actual weight
+topic_weightage_by_doc = pd.DataFrame([dict(t) for t in topic_percentages])
+df_topic_weightage_by_doc = topic_weightage_by_doc.sum().to_frame(name='count').reset_index()
+
+# Top 3 Keywords for each Topic
+topic_top3words = [(i, topic) for i, topics in lda_model.show_topics(formatted=False) 
+                                 for j, (topic, wt) in enumerate(topics) if j < 3]
+df_top3words_stacked = pd.DataFrame(topic_top3words, columns=['topic_id', 'words'])
+df_top3words = df_top3words_stacked.groupby('topic_id').agg(', \n'.join)
+df_top3words.reset_index(level=0,inplace=True)
+
+# Plots number of documents by dominant topic
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize = (10, 4), dpi=120, sharey=True)
+
+ax1.bar(x='Dominant_Topic', height='count', data=df_dominant_topic_in_each_doc, width=.5, color='firebrick')
+ax1.set_xticks(range(df_dominant_topic_in_each_doc.Dominant_Topic.unique().__len__()))
+tick_formatter = FuncFormatter(lambda x, pos: 'Topic ' + str(x)+ '\n' + df_top3words.loc[df_top3words.topic_id==x, 'words'].values[0])
+ax1.xaxis.set_major_formatter(tick_formatter)
+ax1.tick_params(axis='x', labelsize=4)
+ax1.set_title('Number of Documents by Dominant Topic', fontdict=dict(size=10))
+ax1.set_ylabel('Number of Documents')
+ax1.set_ylim(0, 10)
+
+
+# Plots topic weights for all documents
+ax2.bar(x='index', height='count', data=df_topic_weightage_by_doc, width=.5, color='steelblue')
+ax2.set_xticks(range(df_topic_weightage_by_doc.index.unique().__len__()))
+ax2.xaxis.set_major_formatter(tick_formatter)
+ax2.tick_params(axis='x', labelsize=4)
+ax2.set_title('Number of Documents by Topic Weightage', fontdict=dict(size=10))
+
+plt.show()
 # sklearn prediction >> improve the pipelines
 
 
