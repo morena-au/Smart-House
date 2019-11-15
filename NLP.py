@@ -244,6 +244,34 @@ print('-'*20)
 # vis = pyLDAvis.gensim.prepare(lda_model, corpus, id2word)
 # vis
 
+# INTERPRETATION:
+# Output: prop mass function over the words in the model for each topic.
+# Bar: list top 35 words given the topic
+# Red bars: frequency of each words given a topic
+# Gray bars: overall word frequency
+
+# # EASY TO INTERFER MEANING
+# re-ranch and introduce new words that are specific to the topic using the 
+# parameter lambda >> decreasing lambda more weight on the ratio red to gray
+# (freq given the topic to the overall frequency) jargon more lament (lament improve
+# readability for those who are not familiar with the topic)
+
+# Visualize the unexplained portion of a words within a topic by simply
+# going with the mouse over the word. >> words used in different topics 
+# (conditional topic distribution for a given word) >> how other topics use the word <<
+
+# Distance between topics in the scatter plot is an approximation of the
+# difference between topic distribution. >> approximation of the sematic relationship
+
+# Bubble size is the topic prevalence
+# Indices inside the bubble is the sorted order by area >> num 1 is the most popular topic to least
+# Distance between circles represent topic similarity (approx to the original topic similarity matrix
+# since we are using a two dimensional scatter plot)
+
+# dimensionality of original (num_topics-1)^num_topics/2, multidimensional scaling does its best
+# to preserve the original distance
+
+
 # Build LDA Mallet Model
 mallet_path = 'mallet-2.0.8/bin/mallet'
 ldamallet = gensim.models.wrappers.LdaMallet(
