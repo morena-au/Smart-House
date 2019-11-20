@@ -804,7 +804,6 @@ def trust_14(link = 'https://medium.designit.com/introducing-trusting-invisibili
 
 
 data = []
-source = []
 
 source = [privacy_01(), privacy_02(), privacy_03(), privacy_04(), privacy_05(), privacy_06(), privacy_07(), privacy_08(), 
           privacy_09(), privacy_10(), privacy_11(), privacy_12(), privacy_13(), privacy_14(),
