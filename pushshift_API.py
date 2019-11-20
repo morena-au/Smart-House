@@ -8,17 +8,17 @@ import re
 
 def getPushShiftData(query_term, subreddit, after=1546300800, before=1561939200, sort='asc'):
     '''
-    Input: 
+    Input:
         - query_term
         - subreddit
         - timestamp in unix epoch defined in After and Before
-        - sort: default asc (Oldest to Newest) 
+        - sort: default asc (Oldest to Newest)
         e.g. term privacy restricted to the subreddit smarthome 6 months after 01.01.2019 12 AM
 
     Output:
         DICT STRUCTURE:
 
-        {submission_id: [title + selftext, full_link, score, num_comments, subreddit, category, 
+        {submission_id: [title + selftext, full_link, score, num_comments, subreddit, category,
                             {comment_id : [body, score, parent_id],
                              comment_id : [body, score, parent_id],
                              . . .}],
@@ -40,6 +40,7 @@ def getPushShiftData(query_term, subreddit, after=1546300800, before=1561939200,
         str(query_term)+'&subreddit='+str(subreddit) + \
         '&after='+str(after)+'&before='+str(before) + \
         '&sort='+str(sort)+'&sort_type=score'
+
     r = requests.get(url_comment)
     data = json.loads(r.text)
     link_ids = []
@@ -62,6 +63,18 @@ def getPushShiftData(query_term, subreddit, after=1546300800, before=1561939200,
 
         r_sub = requests.get(url_submission)
         data_sub = json.loads(r_sub.text)
+
+        # print out id if submission return an empty list
+        # all comments from that subm disregarded
+        if not data_sub['data']:
+            print('\nSubmission returned empty:')
+            print('https://api.pushshift.io/reddit/search/submission/?subreddit=' +
+                  str(subreddit)+'&ids='+str(link))
+            print('https://api.pushshift.io/reddit/search/comment/?subreddit=' +
+                  str(subreddit)+'&link_id='+str(link) +
+                  '&sort_type=score')
+            print('https://reddit.com/{}'.format(re.sub('.*_', '', link)))
+            print('\n\n')
 
         # Add comments {comment_id: [body, score, parent_id]}
         # sort them by score == BEST
@@ -131,28 +144,47 @@ def getPushShiftData(query_term, subreddit, after=1546300800, before=1561939200,
 
     print('Dictionary\'s length with all submissions:')
     print(len(data_dict))
-    print('-'*20)
-    print('-'*10, 'End', '-'*10)
+    print('='*10, 'End', '='*10)
 
     return data_dict
 
 
-# subreddit = ['smarthome', 'homeautomation', 'smarthomeautomation']
-# data_privacy = []
-# data_security = []
-# data_trust = []
+subreddit = ['smarthome', 'homeautomation']
+query_term = ['privacy', 'security', 'trust']
 
-# for i in subreddit:
-#     print('PRIVACY:')
-#     data_privacy.append(getPushShiftData('privacy', i))
-#     print('SECURITY:')
-#     data_security.append(getPushShiftData('security', i))
-#     print('TRUST:')
-#     data_trust.append(getPushShiftData('trust', i))
+# initiate data empty list of dicts
+data = []
+
+for num, reddit in enumerate(subreddit):
+    for term in query_term:
+        print('\nSUBREDDIT:', reddit, '\tQUERY TERM:', term)
+        data.append(getPushShiftData(query_term=term,
+                                     subreddit=reddit))
+    print('\nDIAGNOSTICS: \n')
+    for i in range(len(data)):
+        print('Length with duplicates within subreddit')
+        print('Dictionary {}\t{}'.format(i, len(data[i].keys())))
+
+    # remove subreddit_ids that are duplicate within the subreddit
+    # init as first dict of the subreddit
+    unique_key = list(data[num*len(query_term)].keys())
+
+    for i in range(num*len(query_term), len(data)-1):
+        # Update dict only with unique keys
+        data[i+1] = {k: v for k, v in data[i+1].items() if k not in unique_key}
+        # add unique keys from all previous dicts
+        unique_key = unique_key + list(data[i+1].keys())
+
+    print('\nDIAGNOSTICS: \n')
+    for i in range(len(data)):
+        print('Length with NO duplicates within subreddit')
+        print('Dictionary {}\t{}'.format(i, len(data[i].keys())))
 
 
-# privacy_smarthome = getPushShiftData('privacy', 'smarthome')
-# privacy_homeautomation = getPushShiftData('privacy', 'homeautomation')
-
-# key_duplicate = [
-#     key for key, value in privacy_homeautomation.items() if key not in foo.keys()]
+# write the data in a json_file
+with open('reddit_data.json', 'w') as outfile:
+    # json.dump each dict individually and write the commas and new lines manually
+    outfile.write(
+        '[' +
+        ',\n'.join(json.dumps(i) for i in data) +
+        ']')
