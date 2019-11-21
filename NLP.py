@@ -1,18 +1,12 @@
-## Page
-
 import json
-# Enable logging for gensim - optional
-import logging
 import re
 import warnings
-from collections import defaultdict, Counter
+from collections import Counter, defaultdict
 
 import gensim
 import gensim.corpora as corpora
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
-from matplotlib.ticker import FuncFormatter
 import nltk
 import numpy as np
 import pandas as pd
@@ -20,39 +14,48 @@ import pyLDAvis
 import pyLDAvis.gensim
 import seaborn as sns
 import spacy
-from sklearn.manifold import TSNE
-from bokeh.plotting import figure, output_file, show
-from bokeh.models import Label
 from bokeh.io import output_notebook
-from wordcloud import WordCloud, STOPWORDS
+from bokeh.models import Label
+from bokeh.plotting import figure, output_file, show
 from gensim.models import CoherenceModel, TfidfModel
 from gensim.utils import simple_preprocess
+from matplotlib.patches import Rectangle
+from matplotlib.ticker import FuncFormatter
 from nltk.corpus import stopwords
 from nltk.corpus import wordnet as wn
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from sklearn.manifold import TSNE
+from wordcloud import STOPWORDS, WordCloud
 
-logging.basicConfig(
-    format='%(asctime)s : %(levelname)s : %(message)s', level=logging.ERROR)
+## Run in terminal with the size wanted 
+# python3 pushshift_comments.py 10
 
-
-warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=[DeprecationWarning, FutureWarning])
 
 # import training data
 
-with open('train_data.json', 'r') as f:
+with open('reddit_data.json', 'r') as f:
     train_data = json.load(f)
 
-
+# Add all text from a submission together
 link = []
-category = []
-body_par = []
-comment_par = []
+text = []
+submission_id = []
 
 for item in train_data:
-    link.append(item['link'])
-    category.append(item['category'])
-    body_par.append(item['body_par'])
-    comment_par.append(item['comment_par'])
+    submission_id += list(item.keys())
+    sub_text = []
+    for sub_key in item:
+        link.append(item[sub_key][1])
+        sub_text.append(item[sub_key][0])
+        com = []
+        for com_key in item[sub_key][6]:
+            com.append(item[sub_key][6][com_key][0])
+            
+        # Join comments together
+        sub_text.append(' '.join(com))
+        # Join all submission text together
+        text.append(' '.join(sub_text))
 
 # nltk.download('stopwords')  # (run python console)
 # python3 -m spacy download en  # (run in terminal)
@@ -62,68 +65,80 @@ stop_words = stopwords.words('english')
 stop_words.extend([])
 
 # Tokenize words and remove punctuations and unnecessary characters
-
-
 def sent_to_words(webpages):
+    '''
+    Input: list of webpages text 
+    Output: list of preprocessed words within the webpages text
+    '''
     pages = []
     for webpage in webpages:
-        pars = []
-        for paragraph in webpage:
-            # simeple preprocess remove also digits
-            # deacc=True removes punctuations
-            pars = pars + simple_preprocess(str(paragraph), deacc=True)
-
-        pages.append(pars)
+        # simeple preprocess remove also digits
+        # deacc=True removes punctuations
+        pages.append(simple_preprocess(str(webpage), deacc=True))
 
     return pages
-
-
+                     
 # turn a generator into a list
-train_words = list(sent_to_words(body_par))
+train_words = sent_to_words(text)
 
 # num characters for each paragraph
-print('Lenght words for each webpage: \n\n',
-      [len(word) for word in train_words])
+print('Min lenght words for webpage: \t{}\n'
+      'Max lenght words for webpage: \t{}'.format(
+      min([len(word) for word in train_words]), 
+      max([len(word) for word in train_words])))
 print('-' * 20)
 print('\n')
 
-# Train Bigram and Trigram Models
+# function to plot most frequent terms
+def freq_words(x, terms = 30):
+  all_words = ' '.join([text for text in x])
+  all_words = all_words.split()
+
+  fdist = FreqDist(all_words)
+  words_df = pd.DataFrame({'word':list(fdist.keys()), 'count':list(fdist.values())})
+
+  # selecting top 20 most frequent words
+  d = words_df.nlargest(columns="count", n = terms) 
+  plt.figure(figsize=(20,5))
+  ax = sns.barplot(data=d, x= "word", y = "count")
+  ax.set(ylabel = 'Count')
+  plt.show()
+
+# TRAIN Train Bigram and Trigram Models
 # higher threshold fewer phrases.
-bigram = gensim.models.Phrases(train_words, min_count=5, threshold=40)
-trigram = gensim.models.Phrases(bigram[train_words], threshold=40)
+bigram = gensim.models.Phrases(train_words, min_count=10, threshold=1000)
+trigram = gensim.models.Phrases(bigram[train_words], threshold=1000)
 
 # Faster way to get a paragraph clubbed as trigram/bigram
 bigram_mod = gensim.models.phrases.Phraser(bigram)
 trigram_mod = gensim.models.phrases.Phraser(trigram)
 
-# vis words with underscore
 words_list = trigram_mod[bigram_mod[train_words]]
 
 # Frequency of n-gram words
 dist = nltk.FreqDist(
-    [word for par in words_list for word in par if '_' in word])
+    [word for webpage in words_list for word in webpage if '_' in word])
 
 # Sort frequency
 print('Sorted trigrams: \n')
 print(sorted(dist.items(), key=lambda x: x[1], reverse=True))
 print('-'*20)
 
-# Remove stopwords
-
+# CREATE PIPELINE 
 
 def remove_stopwords(texts):
     '''
-    Input: words' paragraphs
-    OUtput: words' paragraphs without stop words
+    Input: words' webpage
+    OUtput: words' webpage without stop words
     '''
-    par_words = list(sent_to_words(texts))
+    words = list(sent_to_words(texts))
 
-    return [[word for word in page if word not in stop_words] for page in par_words]
+    return [[word for word in page if word not in stop_words] for page in words]
 
 
 def make_bigrams(texts):
     '''
-    Input: words' paragraphs without stop words
+    Input: words' webpage without stop words
     Output: bigram model
     '''
     return [bigram_mod[page] for page in texts]
@@ -131,16 +146,15 @@ def make_bigrams(texts):
 
 def make_trigrams(texts):
     '''
-    Input: words' paragraphs without stop words
+    Input: words' webpage without stop words
     Output: trigram model
     '''
     return [trigram_mod[bigram_mod[page]] for page in texts]
 
-
 def lemmatization(texts, allowed_postags=['NOUN', 'ADJ', 'VERB', 'ADV', 'PROPN']):
     '''
-    Input: words' paragraphs without stop words
-    OUtput: words' paragraphs without stop words and lemmatization
+    Input: words' webpage without stop words
+    Output: words' webpage without stop words and lemmatization
     https://spacy.io/api/annotation
     '''
 
@@ -155,8 +169,9 @@ def lemmatization(texts, allowed_postags=['NOUN', 'ADJ', 'VERB', 'ADV', 'PROPN']
     return texts_out
 
 
+
 # Remove Stop Words
-train_words_nostop = remove_stopwords(body_par)
+train_words_nostop = remove_stopwords(text)
 
 # Form trigrams
 train_words_bigrams = make_bigrams(train_words_nostop)
@@ -204,94 +219,11 @@ print('\nTF-IDF for each words: \n')
 sorted_tfidf = sorted(tfidf_dict.items(), key=lambda x: x[1], reverse=True)
 
 # Smallest TF-IDF: words commonly used across all documents and rarely used in the particular document.
-print('Smallest 10 tfidf:\n{}\n'.format(sorted_tfidf[:-11:-1]))
+print('Smallest 10 tfidf:\n{}\n'.format(sorted_tfidf[:-6:-1]))
 
 # Largest TF-IDF: Term that appears frequently in a particular document, but not often in the corpus.
-print('Largest 10 tfidf: \n{}'.format(sorted_tfidf[:11]))
+print('Largest 10 tfidf: \n{}'.format(sorted_tfidf[:6]))
 print('-' * 20)
-
-# Build LDA model
-lda_model = gensim.models.ldamodel.LdaModel(corpus=corpus,
-                                            id2word=id2word,
-                                            num_topics=10,
-                                            random_state=100,
-                                            update_every=1,
-                                            chunksize=100,  # take all documents into account
-                                            passes=10,
-                                            alpha='auto',
-                                            per_word_topics=True)
-
-print('\n LDA model topics: \n')
-for topic, keyword in lda_model.print_topics():
-    print('Topic: ', topic)
-    print('Keywords: ', keyword)
-print('-'*20)
-
-# Compute model perplexity and coherence score
-# a measure of how good the model is. lower the better.
-print('\nPerplexity and Choerence Score for LDA model:')
-print('\nPerplexity: ', lda_model.log_perplexity(corpus))
-
-# Compute Coherence Score
-coherence_model_lda = CoherenceModel(
-    model=lda_model, texts=train_words_lemmatized, dictionary=id2word, coherence='c_v')
-coherence_lda = coherence_model_lda.get_coherence()
-print('Coherence Score: ', coherence_lda)
-print('-'*20)
-
-# # Visualize the topics
-# pyLDAvis.enable_notebook()
-# vis = pyLDAvis.gensim.prepare(lda_model, corpus, id2word)
-# vis
-
-# INTERPRETATION:
-# Output: prop mass function over the words in the model for each topic.
-# Bar: list top 35 words given the topic
-# Red bars: frequency of each words given a topic
-# Gray bars: overall word frequency
-
-# # EASY TO INTERFER MEANING
-# re-ranch and introduce new words that are specific to the topic using the 
-# parameter lambda >> decreasing lambda more weight on the ratio red to gray
-# (freq given the topic to the overall frequency) jargon more lament (lament improve
-# readability for those who are not familiar with the topic)
-
-# Visualize the unexplained portion of a words within a topic by simply
-# going with the mouse over the word. >> words used in different topics 
-# (conditional topic distribution for a given word) >> how other topics use the word <<
-
-# Distance between topics in the scatter plot is an approximation of the
-# difference between topic distribution. >> approximation of the sematic relationship
-
-# Bubble size is the topic prevalence
-# Indices inside the bubble is the sorted order by area >> num 1 is the most popular topic to least
-# Distance between circles represent topic similarity (approx to the original topic similarity matrix
-# since we are using a two dimensional scatter plot)
-
-# dimensionality of original (num_topics-1)^num_topics/2, multidimensional scaling does its best
-# to preserve the original distance
-
-
-# Build LDA Mallet Model
-mallet_path = 'mallet-2.0.8/bin/mallet'
-ldamallet = gensim.models.wrappers.LdaMallet(
-    mallet_path, corpus=corpus, num_topics=5, id2word=id2word)
-
-
-print('\n LDA Mallet model topics: \n')
-for topic, keyword in ldamallet.show_topics(formatted=False):
-    print('Topic: ', topic)
-    print('Keywords: ', keyword)
-print('-'*20)
-
-coherence_model_ldamallet = CoherenceModel(
-    model=ldamallet, texts=train_words_lemmatized, dictionary=id2word, coherence='c_v')
-
-coherence_ldamallet = coherence_model_ldamallet.get_coherence()
-# Choerence score lower than lda_model
-print('Choerence Score for LDA Mallet model:')
-print('\nCoherence Score: ', coherence_ldamallet)
-print('-'*20)
 
 # Find the optimal number of topics
 def LdaMallet_coherence_values(dictionary, corpus, texts, limit, start = 2, step = 3):
@@ -310,7 +242,9 @@ def LdaMallet_coherence_values(dictionary, corpus, texts, limit, start = 2, step
     model_list: list of LDA topic models
     coherence_values: corresponding to the LDA model
     '''
-
+    
+    mallet_path = 'mallet-2.0.8/bin/mallet'
+    
     coherence_values = []
     model_list = []
 
@@ -359,12 +293,12 @@ def LDA_coherence_values(dictionary, corpus, texts, limit, chunksize = 100, star
 
 
 model_list_mallet, coherence_values_mallet = LdaMallet_coherence_values(dictionary=id2word, corpus=corpus, 
-                                                          texts=train_words_lemmatized, start=8, limit=15, step=1)
+                                                          texts=train_words_lemmatized, start=2, limit=40, step=6)
 
 # show graph
-limit = 15
-start=8
-step=1
+limit = 40
+start=2
+step=6
 x = range(start, limit, step)
 plt.plot(x, coherence_values_mallet)
 plt.plot(x[np.argmax(coherence_values_mallet)], max(coherence_values_mallet), 'or')
@@ -420,6 +354,39 @@ for topic, keyword in optimal_model.print_topics(num_words=10):
     print('Topic: ', topic)
     print('Keywords: ', keyword)
 print('-'*20)
+
+# # Visualize the topics
+# pyLDAvis.enable_notebook()
+# vis = pyLDAvis.gensim.prepare(lda_model, corpus, id2word)
+# vis
+
+# INTERPRETATION:
+# Output: prop mass function over the words in the model for each topic.
+# Bar: list top 35 words given the topic
+# Red bars: frequency of each words given a topic
+# Gray bars: overall word frequency
+
+# # EASY TO INTERFER MEANING
+# re-ranch and introduce new words that are specific to the topic using the 
+# parameter lambda >> decreasing lambda more weight on the ratio red to gray
+# (freq given the topic to the overall frequency) jargon more lament (lament improve
+# readability for those who are not familiar with the topic)
+
+# Visualize the unexplained portion of a words within a topic by simply
+# going with the mouse over the word. >> words used in different topics 
+# (conditional topic distribution for a given word) >> how other topics use the word <<
+
+# Distance between topics in the scatter plot is an approximation of the
+# difference between topic distribution. >> approximation of the sematic relationship
+
+# Bubble size is the topic prevalence
+# Indices inside the bubble is the sorted order by area >> num 1 is the most popular topic to least
+# Distance between circles represent topic similarity (approx to the original topic similarity matrix
+# since we are using a two dimensional scatter plot)
+
+# dimensionality of original (num_topics-1)^num_topics/2, multidimensional scaling does its best
+# to preserve the original distance
+
 
 # Find the dominant topic in each sentence
 # Find the topic number with the highest percentage contributio in that document
