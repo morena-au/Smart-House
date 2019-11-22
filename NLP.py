@@ -23,6 +23,7 @@ from matplotlib.patches import Rectangle
 from matplotlib.ticker import FuncFormatter
 from nltk.corpus import stopwords
 from nltk.corpus import wordnet as wn
+from nltk.stem import WordNetLemmatizer
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.manifold import TSNE
 from wordcloud import STOPWORDS, WordCloud
@@ -30,100 +31,109 @@ from wordcloud import STOPWORDS, WordCloud
 ## Run in terminal with the size wanted 
 # python3 pushshift_comments.py 10
 
-warnings.filterwarnings("ignore", category=[DeprecationWarning, FutureWarning])
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # import training data
 
-with open('reddit_data.json', 'r') as f:
-    train_data = json.load(f)
+df = pd.read_csv('comments.csv', encoding='utf8')
 
-# Add all text from a submission together
-link = []
-text = []
-submission_id = []
-
-for item in train_data:
-    submission_id += list(item.keys())
-    sub_text = []
-    for sub_key in item:
-        link.append(item[sub_key][1])
-        sub_text.append(item[sub_key][0])
-        com = []
-        for com_key in item[sub_key][6]:
-            com.append(item[sub_key][6][com_key][0])
-            
-        # Join comments together
-        sub_text.append(' '.join(com))
-        # Join all submission text together
-        text.append(' '.join(sub_text))
-
+# Cleaning up the comments
 # nltk.download('stopwords')  # (run python console)
+# nltk.download('wordnet')  # (run python console)
 # python3 -m spacy download en  # (run in terminal)
 
+# Extracting URLs: external links often informative, but they add unwanted noise to our NLP model
+# Strip out hyperlinks and copy thme in a new column URL
+
+# Find URL
+def find_URL(comment):
+    return re.findall(r'((?:https?:\/\/(?:www\.)?|(?:pic\.|www\.)(?:\S*\.))(?:\S*\/))', comment)
+
+# apply the function on the body column
+df['URL'] = df.body.apply(find_URL)
+
+# create a colummn with pre-processed try:
+df['clean_body'] = [re.sub(r"((?:https?:\/\/(?:www\.)?|(?:pic\.|www\.)(?:\S*\.))(?:\S*\/))",'', x) for x in df['body']]
+
+# Standardizing the informal language of comments
 # NLTK Stop words
 stop_words = stopwords.words('english')
-stop_words.extend([])
+stop_words.extend(['etc', 'however'])
 
-# Tokenize words and remove punctuations and unnecessary characters
-def sent_to_words(webpages):
-    '''
-    Input: list of webpages text 
-    Output: list of preprocessed words within the webpages text
-    '''
-    pages = []
-    for webpage in webpages:
-        # simeple preprocess remove also digits
-        # deacc=True removes punctuations
-        pages.append(simple_preprocess(str(webpage), deacc=True))
+#We specify the stemmer or lemmatizer we want to use
+word_rooter = nltk.stem.snowball.PorterStemmer(ignore_stopwords=False).stem
+wordnet_lemmatizer = WordNetLemmatizer()
 
-    return pages
-                     
-# turn a generator into a list
-train_words = sent_to_words(text)
+def clean_comment(comment, bigrams=False, lemma=False):
+    comment = comment.lower() # ? consider to make general the name of companies or decives
+    comment = re.sub('&gt', ' ', comment) # remove all copied text into a comment '&gt'
+    comment = re.sub('[^\s\w]', ' ', comment) # strip out everything (punctuation) that is not Unicode whitespace or word character
+    comment = re.sub('[0-9]+', ' ', comment) # remove digits
 
-# num characters for each paragraph
-print('Min lenght words for webpage: \t{}\n'
-      'Max lenght words for webpage: \t{}'.format(
-      min([len(word) for word in train_words]), 
-      max([len(word) for word in train_words])))
-print('-' * 20)
-print('\n')
+    # remove stop_words
+    comment_token_list = [word for word in comment.strip().split() if word not in stop_words]
+
+    if lemma == True:
+        comment_token_list = [wordnet_lemmatizer.lemmatize(word) for word in comment_token_list]
+    else:
+        comment_token_list = [word_rooter(word) for word in comment_token_list]
+
+    if bigrams:
+        comment_token_list = bigram[comment_token_list]
+
+    comment = ' '.join(comment_token_list)
+
+    return comment
+
+# Apply function to clean the comment
+df['clean_body'] = df.clean_body.apply(clean_comment, lemma=True)
 
 # function to plot most frequent terms
-def freq_words(x, terms = 30):
+def freq_words(x, ascending=False, terms = 30):
   all_words = ' '.join([text for text in x])
   all_words = all_words.split()
 
-  fdist = FreqDist(all_words)
+  fdist = nltk.FreqDist(all_words)
   words_df = pd.DataFrame({'word':list(fdist.keys()), 'count':list(fdist.values())})
 
-  # selecting top 20 most frequent words
-  d = words_df.nlargest(columns="count", n = terms) 
+  # selecting top most frequent words
+  d = words_df.sort_values("count", ascending=ascending)
   plt.figure(figsize=(20,5))
-  ax = sns.barplot(data=d, x= "word", y = "count")
+  ax = sns.barplot(data=d[:terms], x= "word", y = "count")
   ax.set(ylabel = 'Count')
+  plt.xticks(rotation=45)
   plt.show()
 
-# TRAIN Train Bigram and Trigram Models
+freq_words(df['clean_body'], True, 20)
+
+def comment2token(comments):
+    '''
+    Return sequence (stream, generator) of sentences,
+    with each sentence a list of tokens
+    '''
+    return [comment.split() for comment in comments]
+
+comment_token_list = comment2token(df['clean_body'])
+
+# Train Bigram and Trigram Models
 # higher threshold fewer phrases.
-bigram = gensim.models.Phrases(train_words, min_count=10, threshold=1000)
-trigram = gensim.models.Phrases(bigram[train_words], threshold=1000)
-
-# Faster way to get a paragraph clubbed as trigram/bigram
-bigram_mod = gensim.models.phrases.Phraser(bigram)
-trigram_mod = gensim.models.phrases.Phraser(trigram)
-
-words_list = trigram_mod[bigram_mod[train_words]]
+bigram = gensim.models.Phrases(comment_token_list, min_count=2, threshold=20)
 
 # Frequency of n-gram words
 dist = nltk.FreqDist(
-    [word for webpage in words_list for word in webpage if '_' in word])
+    [word for comment in bigram[comment_token_list] for word in comment if '_' in word])
 
 # Sort frequency
 print('Sorted trigrams: \n')
 print(sorted(dist.items(), key=lambda x: x[1], reverse=True))
 print('-'*20)
 
+
+df['clean_body'] = df.clean_body.apply(clean_comment, bigrams=True, lemma=True)
+
+
+# TODO
 # CREATE PIPELINE 
 
 def remove_stopwords(texts):
