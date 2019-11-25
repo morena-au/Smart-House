@@ -14,17 +14,18 @@ import pyLDAvis
 import pyLDAvis.gensim
 import seaborn as sns
 import spacy
+from collections import OrderedDict
 from bokeh.io import output_notebook
 from bokeh.models import Label
 from bokeh.plotting import figure, output_file, show
-from gensim.models import CoherenceModel, TfidfModel
+from gensim.models import CoherenceModel, LsiModel, HdpModel, LdaModel
 from gensim.utils import simple_preprocess
 from matplotlib.patches import Rectangle
 from matplotlib.ticker import FuncFormatter
 from nltk.corpus import stopwords
 from nltk.corpus import wordnet as wn
 from nltk.stem import WordNetLemmatizer
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer, TfidfTransformer
 from sklearn.manifold import TSNE
 from wordcloud import STOPWORDS, WordCloud
 
@@ -56,6 +57,9 @@ df['URL'] = df.body.apply(find_URL)
 # create a colummn with pre-processed try:
 df['clean_body'] = [re.sub(r"((?:https?:\/\/(?:www\.)?|(?:pic\.|www\.)(?:\S*\.))(?:\S*\/))",'', x) for x in df['body']]
 
+# Find all internal hyphen words and consider them as full words (technical vocabulary)
+df['clean_body'] = [re.sub(r'([a-zA-Z]+)(-)([a-zA-Z]+)', r'\g<1>\g<3>', x) for x in df['clean_body']]
+
 # Standardizing the informal language of comments
 # NLTK Stop words
 stop_words = stopwords.words('english')
@@ -74,8 +78,13 @@ def clean_comment(comment, bigrams=False, lemma=False):
     # remove stop_words
     comment_token_list = [word for word in comment.strip().split() if word not in stop_words]
 
+    # remove one character word
+    comment_token_list = [word for word in comment_token_list if len(word) > 1]
+    
+    # keeps word meaning
     if lemma == True:
         comment_token_list = [wordnet_lemmatizer.lemmatize(word) for word in comment_token_list]
+    # harsh to the root of the word
     else:
         comment_token_list = [word_rooter(word) for word in comment_token_list]
 
@@ -118,7 +127,7 @@ comment_token_list = comment2token(df['clean_body'])
 
 # Train Bigram and Trigram Models
 # higher threshold fewer phrases.
-bigram = gensim.models.Phrases(comment_token_list, min_count=2, threshold=20)
+bigram = gensim.models.Phrases(comment_token_list, min_count=3, threshold=20)
 
 # Frequency of n-gram words
 dist = nltk.FreqDist(
@@ -132,109 +141,48 @@ print('-'*20)
 
 df['clean_body'] = df.clean_body.apply(clean_comment, bigrams=True, lemma=True)
 
+# FURTEHR CONSIDERATION
+# Bot comments - duplicate
 
-# TODO
-# CREATE PIPELINE 
+# Create a new columns with tokens
+df['token_text'] = [[word for word in comment.split()] for comment in df['clean_body']]
 
-def remove_stopwords(texts):
-    '''
-    Input: words' webpage
-    OUtput: words' webpage without stop words
-    '''
-    words = list(sent_to_words(texts))
-
-    return [[word for word in page if word not in stop_words] for page in words]
-
-
-def make_bigrams(texts):
-    '''
-    Input: words' webpage without stop words
-    Output: bigram model
-    '''
-    return [bigram_mod[page] for page in texts]
-
-
-def make_trigrams(texts):
-    '''
-    Input: words' webpage without stop words
-    Output: trigram model
-    '''
-    return [trigram_mod[bigram_mod[page]] for page in texts]
-
-def lemmatization(texts, allowed_postags=['NOUN', 'ADJ', 'VERB', 'ADV', 'PROPN']):
-    '''
-    Input: words' webpage without stop words
-    Output: words' webpage without stop words and lemmatization
-    https://spacy.io/api/annotation
-    '''
-
-    texts_out = []
-    for page_words in texts:
-        # join single words to a unique string of text
-        page_text = nlp(' '.join(page_words))
-        # return token (word) lemma if part of speech (pos) within allowed
-        texts_out.append(
-            [token.lemma_ for token in page_text if token.pos_ in allowed_postags])
-
-    return texts_out
-
-
-
-# Remove Stop Words
-train_words_nostop = remove_stopwords(text)
-
-# Form trigrams
-train_words_bigrams = make_bigrams(train_words_nostop)
-train_words_trigrams = make_trigrams(train_words_nostop)
-
-# Initialize spacy 'en' model, keeping only tagger component (for efficiency)
-nlp = spacy.load('en', disable=['parser', 'ner'])
-
-# Do lemmatization keeping only noun, adj, vb, adv as per default
-train_words_lemmatized = lemmatization(train_words_trigrams)
+comment = df['token_text']
 
 # Create Dictionary
-id2word = corpora.Dictionary(train_words_lemmatized)
-
-# Create Corpus
-texts = train_words_lemmatized
+dictionary = corpora.Dictionary(comment)
 
 # Term Document Frequency >> (id, freq) for each page
-corpus = [id2word.doc2bow(text) for text in texts]
+corpus = [dictionary.doc2bow(text) for text in comment]
 
-print('\nPrint words and frequencies in the first website:\n')
-print([[(id2word[id], freq) for id, freq in page] for page in corpus[:1]])
+print('\nPrint words and frequencies in the first comment:\n')
+print([[(dictionary[id], freq) for id, freq in page] for page in corpus[:1]])
 print('-' * 20)
 
-# Create the TF-IDF model
-# Term frequency = 'n' (Occurence frequency of term in document)
-# Document frequency = 't' (non-zero inverse collection frequency)
-# Document lenght normalization = 'c' (cosine normalization)
-tfidf = TfidfModel(corpus, smartirs='ntc')
+# TF-IDF model as pre-processing step
+cv = CountVectorizer()
+comment_token_vector = cv.fit_transform(df['clean_body'])
 
-tfidf_list = []
+# Compute the IDF values
+tfidf_transformer = TfidfTransformer(smooth_idf=True, use_idf=True)
+tfidf_transformer.fit(comment_token_vector)
 
-for page in tfidf[corpus]:
-    tfidf_list = tfidf_list + \
-        [(id2word[id], np.around(freq, decimals=3)) for id, freq in page]
+# Compute the TFIDF score (new unseen dataset)
+count_vector = cv.transform(df['clean_body'])
+tfidf_vector = tfidf_transformer.transform(count_vector)
 
-# Sort frequency
-# Convert list of tuples to dictionary value lists
+# Check if it makes sense
+feature_names = np.array(cv.get_feature_names())
 
-tfidf_dict = defaultdict(list)
-for idx, tfidf_num in tfidf_list:
-    tfidf_dict[idx].append(tfidf_num)
+# max(0) equal max by columns, argsort: return the indices that would sort an array
+sorted_tfidf_index = tfidf_vector.max(0).toarray()[0].argsort()
 
-print('\nTF-IDF for each words: \n')
-sorted_tfidf = sorted(tfidf_dict.items(), key=lambda x: x[1], reverse=True)
+# Smallest: words commonly used across all documents and rarely used in the particular document.
+print('Smallest tfidf:\n{}\n'.format(feature_names[sorted_tfidf_index[:10]]))
+# Largest: Term that appears frequently in a particular document, but not often in the corpus.
+print('Largest tfidf: \n{}'.format(feature_names[sorted_tfidf_index[:-11:-1]]))
 
-# Smallest TF-IDF: words commonly used across all documents and rarely used in the particular document.
-print('Smallest 10 tfidf:\n{}\n'.format(sorted_tfidf[:-6:-1]))
-
-# Largest TF-IDF: Term that appears frequently in a particular document, but not often in the corpus.
-print('Largest 10 tfidf: \n{}'.format(sorted_tfidf[:6]))
-print('-' * 20)
-
+## MODELS
 # Find the optimal number of topics
 def LdaMallet_coherence_values(dictionary, corpus, texts, limit, start = 2, step = 3):
     '''
@@ -259,6 +207,7 @@ def LdaMallet_coherence_values(dictionary, corpus, texts, limit, start = 2, step
     model_list = []
 
     for num_topics in range(start, limit, step):
+        print('Running model with number of topics: ', num_topics)
         model = gensim.models.wrappers.LdaMallet(mallet_path, corpus = corpus, num_topics = num_topics, id2word = dictionary)
         model_list.append(model)
 
@@ -289,6 +238,7 @@ def LDA_coherence_values(dictionary, corpus, texts, limit, chunksize = 100, star
     model_list = []
 
     for num_topics in range(start, limit, step):
+        print('Running model with number of topics: ', num_topics)
         model = gensim.models.ldamodel.LdaModel(corpus=corpus, id2word=dictionary,
                                                 num_topics=num_topics, random_state=100, 
                                                 update_every=1, chunksize=100, passes=10, 
@@ -302,37 +252,12 @@ def LDA_coherence_values(dictionary, corpus, texts, limit, chunksize = 100, star
     return model_list, coherence_values
 
 
-model_list_mallet, coherence_values_mallet = LdaMallet_coherence_values(dictionary=id2word, corpus=corpus, 
-                                                          texts=train_words_lemmatized, start=2, limit=40, step=6)
+model_list, coherence_values = LDA_coherence_values(dictionary=dictionary, corpus=corpus, 
+                                                          texts=comment, start=5, limit=30, step=1)
+# Nun Topics = 25  has Coherence Value of 0.7015
 
-# show graph
-limit = 40
-start=2
-step=6
-x = range(start, limit, step)
-plt.plot(x, coherence_values_mallet)
-plt.plot(x[np.argmax(coherence_values_mallet)], max(coherence_values_mallet), 'or')
-plt.text(x[np.argmax(coherence_values_mallet)]+0.2, max(coherence_values_mallet), 
-         r'({}, {})'.format(x[np.argmax(coherence_values_mallet)], np.round(max(coherence_values_mallet), 2)))
-plt.xlabel('Num Topics')
-plt.ylabel('Coherence score')
-plt.title('Coherence Scores with LDA Mallet Algorith Implementation')
-# plt.savefig('output/Topics_Coher_LDA_Mallet_page')
-plt.show()
-
-
-
-print('\nLDA Mallet: \n')
-for num, cv in zip(x, coherence_values_mallet):
-    print('Nun Topics =', num, ' has Coherence Value of', round(cv, 4))
-print('-'*20)
-
-model_list, coherence_values = LDA_coherence_values(dictionary=id2word, corpus=corpus, 
-                                                          texts=train_words_lemmatized, start=8, limit=15, step=1)
-
-# show graph
-limit = 15
-start=8
+limit = 30
+start=5
 step=1
 x = range(start, limit, step)
 plt.plot(x, coherence_values)
@@ -345,30 +270,38 @@ plt.title('Coherence Scores with LDA Algorith Implementation')
 # plt.savefig('output/Topics_Coher_LDA_Model_page')
 plt.show()
 
-
 print('\nLDA model: \n')
 for num, cv in zip(x, coherence_values):
     print('Nun Topics =', num, ' has Coherence Value of', round(cv, 4))
 print('-'*20)
 
 # pick the model with the highest coherence score
-if max(coherence_values_mallet) > max(coherence_values):
-    optimal_model = model_list_mallet[np.argmax(coherence_values_mallet)]
-else:
-    optimal_model = model_list[np.argmax(coherence_values)]
+optimal_model = model_list[np.argmax(coherence_values)]
 
 model_topics = optimal_model.show_topics(formatted = False)
 
-print('\n LDA Mallet topics: \n')
+print('\n LDA topics: \n')
 for topic, keyword in optimal_model.print_topics(num_words=10):
     print('Topic: ', topic)
     print('Keywords: ', keyword)
 print('-'*20)
 
-# # Visualize the topics
-# pyLDAvis.enable_notebook()
-# vis = pyLDAvis.gensim.prepare(lda_model, corpus, id2word)
-# vis
+# Visualize the topics
+pyLDAvis.enable_notebook()
+vis = pyLDAvis.gensim.prepare(optimal_model, corpus, dictionary, mds='TSNE')
+vis
+
+# Heatmap of Cos Metrics for LDA
+data_lda = {i: OrderedDict(optimal_model.show_topic(i,25)) for i in range(len(optimal_model.show_topics()))}
+
+#data_lda
+df_lda = pd.DataFrame(data_lda)
+df_lda = df_lda.fillna(0).T
+print(df_lda.shape)
+
+g=sns.clustermap(df_lda.corr(), center=0, cmap="RdBu", metric='cosine', linewidths=1, figsize=(10, 12))
+plt.setp(g.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
+plt.show()
 
 # INTERPRETATION:
 # Output: prop mass function over the words in the model for each topic.
