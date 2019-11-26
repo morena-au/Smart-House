@@ -20,6 +20,7 @@ from bokeh.models import Label
 from bokeh.plotting import figure, output_file, show
 from gensim.models import CoherenceModel, LsiModel, HdpModel, LdaModel
 from gensim.utils import simple_preprocess
+from gensim.test.utils import datapath
 from matplotlib.patches import Rectangle
 from matplotlib.ticker import FuncFormatter
 from nltk.corpus import stopwords
@@ -63,13 +64,13 @@ df['clean_body'] = [re.sub(r'([a-zA-Z]+)(-)([a-zA-Z]+)', r'\g<1>\g<3>', x) for x
 # Standardizing the informal language of comments
 # NLTK Stop words
 stop_words = stopwords.words('english')
-stop_words.extend(['etc', 'however'])
+stop_words.extend(['etc', 'however', 'there', 'home', 'week', 'also', 'like'])
 
 #We specify the stemmer or lemmatizer we want to use
 word_rooter = nltk.stem.snowball.PorterStemmer(ignore_stopwords=False).stem
 wordnet_lemmatizer = WordNetLemmatizer()
 
-def clean_comment(comment, bigrams=False, lemma=False):
+def clean_comment(comment, bigrams=False, lemma=False, allowed_postags=['NOUN', 'ADJ', 'VERB', 'ADV', 'PROPN']):
     comment = comment.lower() # ? consider to make general the name of companies or decives
     comment = re.sub('&gt', ' ', comment) # remove all copied text into a comment '&gt'
     comment = re.sub('[^\s\w]', ' ', comment) # strip out everything (punctuation) that is not Unicode whitespace or word character
@@ -77,22 +78,28 @@ def clean_comment(comment, bigrams=False, lemma=False):
 
     # remove stop_words
     comment_token_list = [word for word in comment.strip().split() if word not in stop_words]
-
+    
     # remove one character word
     comment_token_list = [word for word in comment_token_list if len(word) > 1]
     
     # keeps word meaning
     if lemma == True:
-        comment_token_list = [wordnet_lemmatizer.lemmatize(word) for word in comment_token_list]
+        # Initialize spacy 'en' model, keeping only tagger component (for efficiency)
+        nlp = spacy.load('en', disable=['parser', 'ner'])
+        # https://spacy.io/api/annotation
+        comment_text = nlp(' '.join(comment_token_list))
+        comment_token_list = [token.lemma_ for token in comment_text if token.pos_ in allowed_postags]
+        #comment_token_list = [wordnet_lemmatizer.lemmatize(word) for word in comment_token_list]
+    
     # harsh to the root of the word
     else:
         comment_token_list = [word_rooter(word) for word in comment_token_list]
 
     if bigrams:
         comment_token_list = bigram[comment_token_list]
-
+    
     comment = ' '.join(comment_token_list)
-
+    
     return comment
 
 # Apply function to clean the comment
@@ -139,7 +146,7 @@ print(sorted(dist.items(), key=lambda x: x[1], reverse=True))
 print('-'*20)
 
 
-df['clean_body'] = df.clean_body.apply(clean_comment, bigrams=True, lemma=True)
+# df['clean_body'] = df.clean_body.apply(clean_comment, bigrams=True, lemma=True)
 
 # FURTEHR CONSIDERATION
 # Bot comments - duplicate
@@ -147,7 +154,31 @@ df['clean_body'] = df.clean_body.apply(clean_comment, bigrams=True, lemma=True)
 # Create a new columns with tokens
 df['token_text'] = [[word for word in comment.split()] for comment in df['clean_body']]
 
-comment = df['token_text']
+# Add Wikipedia corpus
+with open('train_wiki.json', 'r') as f:
+    train_wiki = json.load(f)
+
+link = []
+category = []
+body_par = []
+
+for item in train_wiki:
+    link.append(item['link'])
+    category.append(item['category'])
+    body_par.append(item['body_par'])
+
+wiki_text= []
+for elm in body_par:
+    wiki_text.append(' '.join(elm))
+
+wiki_text = pd.DataFrame({'wiki_text': wiki_text})
+
+# Apply function to clean the comment
+wiki_text['wiki_clean'] = wiki_text.wiki_text.apply(clean_comment, lemma=True)
+wiki_text['token_text'] = [[word for word in comment.split()] for comment in wiki_text['wiki_clean']]
+
+comment = pd.concat([wiki_text['token_text'], df['token_text']], ignore_index=True)
+# comment = df['token_text']
 
 # Create Dictionary
 dictionary = corpora.Dictionary(comment)
@@ -254,7 +285,7 @@ def LDA_coherence_values(dictionary, corpus, texts, limit, chunksize = 100, star
 
 model_list, coherence_values = LDA_coherence_values(dictionary=dictionary, corpus=corpus, 
                                                           texts=comment, start=5, limit=30, step=1)
-# Nun Topics = 25  has Coherence Value of 0.7015
+
 
 limit = 30
 start=5
@@ -275,33 +306,37 @@ for num, cv in zip(x, coherence_values):
     print('Nun Topics =', num, ' has Coherence Value of', round(cv, 4))
 print('-'*20)
 
-# pick the model with the highest coherence score
-optimal_model = model_list[np.argmax(coherence_values)]
+# Extract the model base on the topic number
+def model_extract(num_topics):
+    '''
+    Input: num_topics (int)
+    '''
+    # get number of topics
+    num, _ = zip(*list(zip(x,coherence_values)))
+    model = model_list[[i for i in range(len(num)) if num[i] == num_topics][0]]
+    
+    return model
 
-model_topics = optimal_model.show_topics(formatted = False)
+model = model_extract(10)
+
+# save model to disk
+# temp_file = datapath("TrainedModel")
+# model.save(temp_file)
+# Load a potentially pretrained model from disk.
+# lda = LdaModel.load(temp_file)
+
+model_topics = model.show_topics(num_topics=10, num_words=10,formatted = False)
 
 print('\n LDA topics: \n')
-for topic, keyword in optimal_model.print_topics(num_words=10):
+for topic, keyword in model.print_topics(num_words=10):
     print('Topic: ', topic)
     print('Keywords: ', keyword)
 print('-'*20)
 
 # Visualize the topics
 pyLDAvis.enable_notebook()
-vis = pyLDAvis.gensim.prepare(optimal_model, corpus, dictionary, mds='TSNE')
+vis = pyLDAvis.gensim.prepare(model, corpus, dictionary, mds='TSNE')
 vis
-
-# Heatmap of Cos Metrics for LDA
-data_lda = {i: OrderedDict(optimal_model.show_topic(i,25)) for i in range(len(optimal_model.show_topics()))}
-
-#data_lda
-df_lda = pd.DataFrame(data_lda)
-df_lda = df_lda.fillna(0).T
-print(df_lda.shape)
-
-g=sns.clustermap(df_lda.corr(), center=0, cmap="RdBu", metric='cosine', linewidths=1, figsize=(10, 12))
-plt.setp(g.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
-plt.show()
 
 # INTERPRETATION:
 # Output: prop mass function over the words in the model for each topic.
@@ -330,11 +365,41 @@ plt.show()
 # dimensionality of original (num_topics-1)^num_topics/2, multidimensional scaling does its best
 # to preserve the original distance
 
+# Extract the topic with highest security, trust and privacy
+
+def relevent_topic(num_topics, query):
+    '''
+    Input:
+        > num_topics: integer
+        > query: term string
+    '''
+    print('{} topics:\n'.format(query.upper()))
+    relevant = [(num, dist) for num, dist in model.show_topics(num_topics = num_topics) if len(re.findall(query, dist)) != 0]
+    
+    for i in relevant:
+        print('Topic: {}'.format(i[0]))
+        print('Distribution: {}\n'.format(i[1]))
+
+relevent_topic(10, 'security')
+relevent_topic(10, 'privacy')
+relevent_topic(10, 'trust')
+
+# Heatmap of Cos Metrics for LDA
+data_lda = {i: OrderedDict(model.show_topic(i,5)) for i in range(len(model.show_topics(num_topics=10)))}
+
+#data_lda
+df_lda = pd.DataFrame(data_lda)
+df_lda = df_lda.fillna(0).T
+print(df_lda.shape)
+
+g=sns.clustermap(df_lda.corr(), center=0, cmap="RdBu", metric='cosine', linewidths=1, figsize=(10, 12))
+plt.setp(g.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
+plt.show()
 
 # Find the dominant topic in each sentence
-# Find the topic number with the highest percentage contributio in that document
+# Find the topic number with the highest percentage contribution in that document
 
-def dominant_topic(ldamodel = lda_model, corpus=corpus, texts=body_par):
+def dominant_topic(ldamodel, corpus=corpus, texts):
     # init dataframe
     topics_df = pd.DataFrame()
 
@@ -364,8 +429,9 @@ def dominant_topic(ldamodel = lda_model, corpus=corpus, texts=body_par):
 
     return topics_df
 
+target_corpus = [dictionary.doc2bow(text) for text in comment]
 
-df_topic_keywords = dominant_topic(ldamodel=optimal_model, corpus=corpus, texts=body_par)
+df_topic_keywords = dominant_topic(ldamodel=optimal_model, corpus=target_corpus, texts=df['body'])
 
 df_topic_keywords.head(10)
 
