@@ -70,7 +70,7 @@ stop_words.extend(['etc', 'however', 'there', 'home', 'week', 'also', 'like'])
 word_rooter = nltk.stem.snowball.PorterStemmer(ignore_stopwords=False).stem
 wordnet_lemmatizer = WordNetLemmatizer()
 
-def clean_comment(comment, bigrams=False, lemma=False, allowed_postags=['NOUN', 'ADJ', 'VERB', 'ADV', 'PROPN']):
+def clean_comment(comment, bigrams=False, lemma=False, allowed_postags=['NOUN', 'ADJ', 'VERB']):
     comment = comment.lower() # ? consider to make general the name of companies or decives
     comment = re.sub('&gt', ' ', comment) # remove all copied text into a comment '&gt'
     comment = re.sub('[^\s\w]', ' ', comment) # strip out everything (punctuation) that is not Unicode whitespace or word character
@@ -210,7 +210,7 @@ sorted_tfidf_index = tfidf_vector.max(0).toarray()[0].argsort()
 
 # Smallest: words commonly used across all documents and rarely used in the particular document.
 print('Smallest tfidf:\n{}\n'.format(feature_names[sorted_tfidf_index[:10]]))
-# Largest: Term that appears frequently in a particular document, but not often in the corpus.
+
 print('Largest tfidf: \n{}'.format(feature_names[sorted_tfidf_index[:-11:-1]]))
 
 ## MODELS
