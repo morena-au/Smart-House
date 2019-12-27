@@ -2,6 +2,8 @@ import json
 import re
 import warnings
 from collections import Counter, defaultdict
+import mysql.connector
+from contextlib import contextmanager
 
 import gensim
 import gensim.corpora as corpora
@@ -30,15 +32,42 @@ from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer, Tf
 from sklearn.manifold import TSNE
 from wordcloud import STOPWORDS, WordCloud
 
-## Run in terminal with the size wanted 
-# python3 pushshift_comments.py 10
-
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-# import training data
+# Get the passowrd
+with open('password.txt', 'r') as file:
+    database_password = file.readline()
 
-df = pd.read_csv('comments.csv', encoding='utf8')
+@contextmanager
+def mysql_connection():
+    mydb = mysql.connector.connect(user="root",
+                                   password=database_password,
+                                   host="localhost", 
+                                   port="3305",
+                                   database="reddit_smarthome")
+
+    mycursor = mydb.cursor()
+
+    yield mycursor
+
+    mydb.close()
+    mycursor.close()
+
+
+# import data
+with mysql_connection() as mycursor:
+    mycursor.execute('SELECT * FROM reddit_comments')
+    comments = mycursor.fetchall()
+
+comments = pd.DataFrame(np.array(comments), 
+                        columns=['id', 'link_id', 'parent_id', 'created_utc',\
+                                 'body', 'author', 'permalink', 'score',\
+                                 'subreddit', 'category'])
+
+# Randomly select 5000 comments for each subreddit
+df = pd.concat([comments[comments['subreddit'] == 'smarthome'].sample(n=5000, random_state=123),
+                            comments[comments['subreddit'] == 'homeautomation'].sample(n=5000, random_state=123)])
 
 # Cleaning up the comments
 # nltk.download('stopwords')  # (run python console)
@@ -50,21 +79,19 @@ df = pd.read_csv('comments.csv', encoding='utf8')
 
 # Find URL
 def find_URL(comment):
-    return re.findall(r'((?:https?:\/\/(?:www\.)?|(?:pic\.|www\.)(?:\S*\.))(?:\S*\/))', comment)
+    return re.findall(r'((?:https?:\/\/)(?:\w[^\)\]\s]*))', comment)
 
 # apply the function on the body column
 df['URL'] = df.body.apply(find_URL)
 
 # create a colummn with pre-processed try:
-df['clean_body'] = [re.sub(r"((?:https?:\/\/(?:www\.)?|(?:pic\.|www\.)(?:\S*\.))(?:\S*\/))",'', x) for x in df['body']]
+df['clean_body'] = [re.sub(r"((?:https?:\/\/)(?:\w[^\)\]\s]*))",'', x) for x in df['body']]
 
-# Find all internal hyphen words and consider them as full words (technical vocabulary)
-df['clean_body'] = [re.sub(r'([a-zA-Z]+)(-)([a-zA-Z]+)', r'\g<1>\g<3>', x) for x in df['clean_body']]
+#NOTE: consider internal hyphen as full words. "Technical vocabulary"
 
-# Standardizing the informal language of comments
 # NLTK Stop words
 stop_words = stopwords.words('english')
-stop_words.extend(['etc', 'however', 'there', 'home', 'week', 'also', 'like'])
+stop_words.extend(['etc', 'however', 'there', 'also',])
 
 #We specify the stemmer or lemmatizer we want to use
 word_rooter = nltk.stem.snowball.PorterStemmer(ignore_stopwords=False).stem
@@ -72,17 +99,15 @@ wordnet_lemmatizer = WordNetLemmatizer()
 
 def clean_comment(comment, bigrams=False, lemma=False, allowed_postags=['NOUN', 'ADJ', 'VERB']):
     comment = comment.lower() # ? consider to make general the name of companies or decives
-    comment = re.sub('&gt', ' ', comment) # remove all copied text into a comment '&gt'
-    comment = re.sub('[^\s\w]', ' ', comment) # strip out everything (punctuation) that is not Unicode whitespace or word character
-    comment = re.sub('[0-9]+', ' ', comment) # remove digits
+    comment = re.sub(r'&gt', ' ', comment) # remove all copied text into a comment '&gt'
+    comment = re.sub(r'[^\s\w\$]', ' ', comment) # strip out everything (punctuation) that is not Unicode whitespace or word character
+    comment = re.sub(r'[0-9]+', 'digit', comment) # remove digits
+    comment = re.sub(r'\$', 'dollar', comment)
 
     # remove stop_words
     comment_token_list = [word for word in comment.strip().split() if word not in stop_words]
     
-    # remove one character word
-    comment_token_list = [word for word in comment_token_list if len(word) > 1]
-    
-    # keeps word meaning
+     # keeps word meaning
     if lemma == True:
         # Initialize spacy 'en' model, keeping only tagger component (for efficiency)
         nlp = spacy.load('en', disable=['parser', 'ner'])
@@ -102,8 +127,10 @@ def clean_comment(comment, bigrams=False, lemma=False, allowed_postags=['NOUN', 
     
     return comment
 
+# FROM HERE build bigrams/trigrams
+
 # Apply function to clean the comment
-df['clean_body'] = df.clean_body.apply(clean_comment, lemma=True)
+df['clean_body'] = df.clean_body.apply(clean_comment)
 
 # function to plot most frequent terms
 def freq_words(x, ascending=False, terms = 30):
@@ -399,7 +426,7 @@ plt.show()
 # Find the dominant topic in each sentence
 # Find the topic number with the highest percentage contribution in that document
 
-def dominant_topic(ldamodel, corpus=corpus, texts):
+def dominant_topic(ldamodel, corpus, texts):
     # init dataframe
     topics_df = pd.DataFrame()
 
