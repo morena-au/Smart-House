@@ -1,9 +1,6 @@
-import json
 import re
 import warnings
-from collections import Counter, defaultdict
-import mysql.connector
-from contextlib import contextmanager
+from collections import Counter, OrderedDict, defaultdict
 
 import gensim
 import gensim.corpora as corpora
@@ -16,150 +13,32 @@ import pyLDAvis
 import pyLDAvis.gensim
 import seaborn as sns
 import spacy
-from collections import OrderedDict
 from bokeh.io import output_notebook
 from bokeh.models import Label
 from bokeh.plotting import figure, output_file, show
-from gensim.models import CoherenceModel, LsiModel, HdpModel, LdaModel
-from gensim.utils import simple_preprocess
+from gensim.models import CoherenceModel, HdpModel, LdaModel, LsiModel
 from gensim.test.utils import datapath
 from matplotlib.patches import Rectangle
 from matplotlib.ticker import FuncFormatter
 from nltk.corpus import stopwords
 from nltk.corpus import wordnet as wn
 from nltk.stem import WordNetLemmatizer
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer, TfidfTransformer
+from sklearn.feature_extraction.text import (
+    CountVectorizer, TfidfTransformer, TfidfVectorizer)
 from sklearn.manifold import TSNE
 from wordcloud import STOPWORDS, WordCloud
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-# Get the passowrd
-with open('password.txt', 'r') as file:
-    database_password = file.readline()
-
-@contextmanager
-def mysql_connection():
-    mydb = mysql.connector.connect(user="root",
-                                   password=database_password,
-                                   host="localhost", 
-                                   port="3305",
-                                   database="reddit_smarthome")
-
-    mycursor = mydb.cursor()
-
-    yield mycursor
-
-    mydb.close()
-    mycursor.close()
-
-
-# import data
-with mysql_connection() as mycursor:
-    mycursor.execute('SELECT * FROM reddit_comments')
-    comments = mycursor.fetchall()
-
-comments = pd.DataFrame(np.array(comments), 
-                        columns=['id', 'link_id', 'parent_id', 'created_utc',\
-                                 'body', 'author', 'permalink', 'score',\
-                                 'subreddit', 'category'])
-
-# Randomly select 5000 comments for each subreddit
-df = pd.concat([comments[comments['subreddit'] == 'smarthome'].sample(n=5000, random_state=123),
-                            comments[comments['subreddit'] == 'homeautomation'].sample(n=5000, random_state=123)])
-
-# Cleaning up the comments
-# nltk.download('stopwords')  # (run python console)
-# nltk.download('wordnet')  # (run python console)
-# python3 -m spacy download en  # (run in terminal)
-
-# Extracting URLs: external links often informative, but they add unwanted noise to our NLP model
-# Strip out hyperlinks and copy thme in a new column URL
-
-# Find URL
-def find_URL(comment):
-    return re.findall(r'((?:https?:\/\/)(?:\w[^\)\]\s]*))', comment)
-
-# apply the function on the body column
-df['URL'] = df.body.apply(find_URL)
-
-# create a colummn with pre-processed try:
-df['clean_body'] = [re.sub(r"((?:https?:\/\/)(?:\w[^\)\]\s]*))",'', x) for x in df['body']]
-
-#NOTE: consider internal hyphen as full words. "Technical vocabulary"
-
-# NLTK Stop words
-stop_words = stopwords.words('english')
-stop_words.extend(['etc', 'however', 'there', 'also',])
-
-#We specify the stemmer or lemmatizer we want to use
-word_rooter = nltk.stem.snowball.PorterStemmer(ignore_stopwords=False).stem
-wordnet_lemmatizer = WordNetLemmatizer()
-
-# Remove comments where 70% words are not part of the english vocabulary
-english_vocab = set(w.lower() for w in nltk.corpus.words.words())
-
-def clean_comment(comment, bigrams=False, lemma=False, allowed_postags=['NOUN', 'ADJ', 'VERB']):
-    comment = comment.lower() # ? consider to make general the name of companies or decives
-    comment = re.sub(r'&gt', ' ', comment) # remove all copied text into a comment '&gt'
-    comment = re.sub(r'&amp;', ' ', comment) # & charcter
-    comment = re.sub(r'#x200b;', ' ', comment) # zero-witdh space
-    comment = re.sub(r'remindme![\w\s\W]*$', ' ', comment) # remove call to remind me bot
-    comment = re.sub(r'[^\s\w\$]', ' ', comment) # strip out everything (punctuation) that is not Unicode whitespace or word character
-    comment = re.sub(r'[_]', ' ', comment) # remove underscores around a words (italics)
-    comment = re.sub(r'[0-9]+', 'digit', comment) # remove digits
-    comment = re.sub(r'\$', 'dollar', comment)
-
-    # detect no english comments and remove them (14714)
-    #nltk.download('words')
-    text_vocab = set(w for w in comment.strip().split() if w.isalpha())
-    unusual = text_vocab.difference(english_vocab) 
-
-    # empty comments where 70% words not english, slangs, deleted
-    try:
-        if len(unusual)/len(text_vocab) > 0.7:
-            comment = ''
-    except ZeroDivisionError:
-        pass
-
-    # remove stop_words
-    comment_token_list = [word for word in comment.strip().split() if word not in stop_words]
-    
-     # keeps word meaning
-    if lemma == True:
-        # Initialize spacy 'en' model, keeping only tagger component (for efficiency)
-        nlp = spacy.load('en', disable=['parser', 'ner'])
-        # https://spacy.io/api/annotation
-        comment_text = nlp(' '.join(comment_token_list))
-        comment_token_list = [token.lemma_ for token in comment_text if token.pos_ in allowed_postags]
-        #comment_token_list = [wordnet_lemmatizer.lemmatize(word) for word in comment_token_list]
-    
-    # harsh to the root of the word
-    else:
-        comment_token_list = [word_rooter(word) for word in comment_token_list]
-
-    comment = ' '.join(comment_token_list)
-    
-    return comment
-
-
-# Apply function to clean the comment
-df['clean_body'] = df.clean_body.apply(clean_comment)
-
-# remove rows with less than 2 word
-df = df[df['clean_body'].map(lambda x: len(str(x).strip().split())) >= 2]
-
-# delete RemindMeBot  
-df = df[df['author'] != 'RemindMeBot']
-
+df = pd.read_csv('preprocessed_comments.csv')
 
 # Train Bigram and Trigram Models
 # higher threshold fewer phrases.
 comment_token_list = df['clean_body'].map(lambda x: str(x).strip().split())
 
-bigram = gensim.models.Phrases(comment_token_list, min_count=10, threshold=20)
-trigram = gensim.models.Phrases(bigram[comment_token_list], min_count=10, threshold=20)
+bigram = gensim.models.Phrases(comment_token_list, min_count=20, threshold=20)
+trigram = gensim.models.Phrases(bigram[comment_token_list], min_count=20, threshold=20)
 
 dist = nltk.FreqDist(
     [word for comment in trigram[bigram[comment_token_list]] for word in comment if '_' in word])
@@ -169,196 +48,134 @@ print('Sorted trigrams: \n')
 print(sorted(dist.items(), key=lambda x: x[1], reverse=True))
 print('-'*20)
 
+df['clean_body'] = list(trigram[bigram[comment_token_list]])
+df['clean_body'] = df['clean_body'].map(lambda x: ' '.join(x))
 
-df['clean_body'] = comment_token_list.map(lambda x: ' '.join(x))
+# function to plot most frequent terms
+def freq_words(x, ascending=False, terms = 30):
+  all_words = ' '.join([text for text in x])
+  all_words = all_words.split()
 
+  fdist = nltk.FreqDist(all_words)
+  words_df = pd.DataFrame({'word':list(fdist.keys()), 'count':list(fdist.values())})
 
+  # selecting top most frequent words
+  d = words_df.sort_values("count", ascending=ascending)
+  plt.figure(figsize=(20,5))
+  ax = sns.barplot(data=d[:terms], x= "word", y = "count")
+  ax.set(ylabel = 'Count')
+  plt.xticks(rotation=45)
+  plt.show()
 
+freq_words(df['clean_body'], True, 50)
 
-# # function to plot most frequent terms
-# def freq_words(x, ascending=False, terms = 30):
-#   all_words = ' '.join([text for text in x])
-#   all_words = all_words.split()
+# Create a new columns with tokens
+comments = df['clean_body'].map(lambda x: str(x).strip().split())
 
-#   fdist = nltk.FreqDist(all_words)
-#   words_df = pd.DataFrame({'word':list(fdist.keys()), 'count':list(fdist.values())})
+#NOTE: Min number of words for each comment
 
-#   # selecting top most frequent words
-#   d = words_df.sort_values("count", ascending=ascending)
-#   plt.figure(figsize=(20,5))
-#   ax = sns.barplot(data=d[:terms], x= "word", y = "count")
-#   ax.set(ylabel = 'Count')
-#   plt.xticks(rotation=45)
-#   plt.show()
+# Create Dictionary
+dictionary = corpora.Dictionary(comments)
+# Check if a word exist
+# [k for k, v in dictionary.items() if v == 'trust']
 
-# freq_words(df['clean_body'], True, 20)
+# Filter out words that occur less than 3 comments, or more than 90% of comments
+dictionary.filter_extremes(no_below=3, no_above=0.95)
 
-# def comment2token(comments):
-#     '''
-#     Return sequence (stream, generator) of sentences,
-#     with each sentence a list of tokens
-#     '''
-#     return [comment.split() for comment in comments]
+# Term Document Frequency >> (id, freq) for each page
+corpus = [dictionary.doc2bow(text) for text in comments]
+#[(dictionary[k], f) for k, f in corpus[0]]
 
-# comment_token_list = comment2token(df['clean_body'])
-
-
-
-
-# # df['clean_body'] = df.clean_body.apply(clean_comment, bigrams=True, lemma=True)
-
-# # FURTEHR CONSIDERATION
-# # Bot comments - duplicate
-
-# # Create a new columns with tokens
-# df['token_text'] = [[word for word in comment.split()] for comment in df['clean_body']]
-
-# # Add Wikipedia corpus
-# with open('train_wiki.json', 'r') as f:
-#     train_wiki = json.load(f)
-
-# link = []
-# category = []
-# body_par = []
-
-# for item in train_wiki:
-#     link.append(item['link'])
-#     category.append(item['category'])
-#     body_par.append(item['body_par'])
-
-# wiki_text= []
-# for elm in body_par:
-#     wiki_text.append(' '.join(elm))
-
-# wiki_text = pd.DataFrame({'wiki_text': wiki_text})
-
-# # Apply function to clean the comment
-# wiki_text['wiki_clean'] = wiki_text.wiki_text.apply(clean_comment, lemma=True)
-# wiki_text['token_text'] = [[word for word in comment.split()] for comment in wiki_text['wiki_clean']]
-
-# comment = pd.concat([wiki_text['token_text'], df['token_text']], ignore_index=True)
-# # comment = df['token_text']
-
-# # Create Dictionary
-# dictionary = corpora.Dictionary(comment)
-
-# # Term Document Frequency >> (id, freq) for each page
-# corpus = [dictionary.doc2bow(text) for text in comment]
-
-# print('\nPrint words and frequencies in the first comment:\n')
-# print([[(dictionary[id], freq) for id, freq in page] for page in corpus[:1]])
-# print('-' * 20)
-
-# # TF-IDF model as pre-processing step
-# cv = CountVectorizer()
-# comment_token_vector = cv.fit_transform(df['clean_body'])
-
-# # Compute the IDF values
-# tfidf_transformer = TfidfTransformer(smooth_idf=True, use_idf=True)
-# tfidf_transformer.fit(comment_token_vector)
-
-# # Compute the TFIDF score (new unseen dataset)
-# count_vector = cv.transform(df['clean_body'])
-# tfidf_vector = tfidf_transformer.transform(count_vector)
-
-# # Check if it makes sense
-# feature_names = np.array(cv.get_feature_names())
-
-# # max(0) equal max by columns, argsort: return the indices that would sort an array
-# sorted_tfidf_index = tfidf_vector.max(0).toarray()[0].argsort()
-
-# # Smallest: words commonly used across all documents and rarely used in the particular document.
-# print('Smallest tfidf:\n{}\n'.format(feature_names[sorted_tfidf_index[:10]]))
-
-# print('Largest tfidf: \n{}'.format(feature_names[sorted_tfidf_index[:-11:-1]]))
-
-# ## MODELS
-# # Find the optimal number of topics
-# def LdaMallet_coherence_values(dictionary, corpus, texts, limit, start = 2, step = 3):
-#     '''
-#     Compute c_v coherence for various number of topics
+## TODO MODELS
+# Find the optimal number of topics
+def LdaMallet_coherence_values(dictionary, corpus, texts, limit, start = 2, step = 3):
+    '''
+    Compute c_v coherence for various number of topics
     
-#     Parameters:
-#     ---------
-#     dictionary: Gensim dictionary
-#     corpus: Gensim corpus
-#     texts: list of input texts
-#     limit: max num of topics
+    Parameters:
+    ---------
+    dictionary: Gensim dictionary
+    corpus: Gensim corpus
+    texts: list of input texts
+    limit: max num of topics
     
-#     Returns:
-#     ---------
-#     model_list: list of LDA topic models
-#     coherence_values: corresponding to the LDA model
-#     '''
+    Returns:
+    ---------
+    model_list: list of LDA topic models
+    coherence_values: corresponding to the LDA model
+    '''
     
-#     mallet_path = 'mallet-2.0.8/bin/mallet'
+    mallet_path = 'mallet-2.0.8/bin/mallet'
     
-#     coherence_values = []
-#     model_list = []
+    coherence_values = []
+    model_list = []
 
-#     for num_topics in range(start, limit, step):
-#         print('Running model with number of topics: ', num_topics)
-#         model = gensim.models.wrappers.LdaMallet(mallet_path, corpus = corpus, num_topics = num_topics, id2word = dictionary)
-#         model_list.append(model)
+    for num_topics in range(start, limit, step):
+        print('Running model with number of topics: ', num_topics)
+        model = gensim.models.wrappers.LdaMallet(mallet_path, corpus = corpus, num_topics = num_topics, id2word = dictionary)
+        model_list.append(model)
 
-#         coherencemodel = CoherenceModel(model = model, texts = texts, dictionary = dictionary, coherence = 'c_v')
-#         coherence_values.append(coherencemodel.get_coherence())
+        coherencemodel = CoherenceModel(model = model, texts = texts, dictionary = dictionary, coherence = 'c_v')
+        coherence_values.append(coherencemodel.get_coherence())
 
-#     return model_list, coherence_values
+    return model_list, coherence_values
 
-# def LDA_coherence_values(dictionary, corpus, texts, limit, chunksize = 100, start=2, step=3):
-#     '''
-#     Compute c_v coherence for various number of topics
+def LDA_coherence_values(dictionary, corpus, texts, limit, chunksize = 100, start=2, step=3):
+    '''
+    Compute c_v coherence for various number of topics
 
-#     Parameters:
-#     ---------
-#     dictionary: Gensim dictionary
-#     corpus: Gensim corpus
-#     texts: list of input text 
-#     chunksize: number of documents to be used in each training chunk
-#     limit: max num of topics
+    Parameters:
+    ---------
+    dictionary: Gensim dictionary
+    corpus: Gensim corpus
+    texts: list of input text 
+    chunksize: number of documents to be used in each training chunk
+    limit: max num of topics
 
-#     Returns:
-#     ---------
-#     model_list: list of LDA topic
-#     coherence_values: corresponding to the LDA model
-#     '''
+    Returns:
+    ---------
+    model_list: list of LDA topic
+    coherence_values: corresponding to the LDA model
+    '''
 
-#     coherence_values = []
-#     model_list = []
+    coherence_values = []
+    model_list = []
 
-#     for num_topics in range(start, limit, step):
-#         print('Running model with number of topics: ', num_topics)
-#         model = gensim.models.ldamodel.LdaModel(corpus=corpus, id2word=dictionary,
-#                                                 num_topics=num_topics, random_state=100, 
-#                                                 update_every=1, chunksize=100, passes=10, 
-#                                                 alpha='auto', per_word_topics=True)
+    for num_topics in range(start, limit, step):
+        print('Running model with number of topics: ', num_topics)
+        model = gensim.models.ldamodel.LdaModel(corpus=corpus, id2word=dictionary,
+                                                num_topics=num_topics, random_state=100, 
+                                                update_every=1, chunksize=2000, passes=10, 
+                                                alpha='auto', per_word_topics=True)
         
-#         model_list.append(model)
+        model_list.append(model)
 
-#         coherencemodel = CoherenceModel(model = model, texts = texts, dictionary = dictionary, coherence = 'c_v')
-#         coherence_values.append(coherencemodel.get_coherence())
+        coherencemodel = CoherenceModel(model = model, texts = texts, dictionary = dictionary, coherence = 'c_v')
+        coherence_values.append(coherencemodel.get_coherence())
 
-#     return model_list, coherence_values
-
-
-# model_list, coherence_values = LDA_coherence_values(dictionary=dictionary, corpus=corpus, 
-#                                                           texts=comment, start=5, limit=30, step=1)
+    return model_list, coherence_values
 
 
-# limit = 30
-# start=5
-# step=1
-# x = range(start, limit, step)
-# plt.plot(x, coherence_values)
-# plt.plot(x[np.argmax(coherence_values)], max(coherence_values), 'or')
-# plt.text(x[np.argmax(coherence_values)]+0.2, max(coherence_values), 
-#          r'({}, {})'.format(x[np.argmax(coherence_values)], np.round(max(coherence_values), 2)))
-# plt.xlabel('Num Topics')
-# plt.ylabel('Coherence score')
-# plt.title('Coherence Scores with LDA Algorith Implementation')
-# # plt.savefig('output/Topics_Coher_LDA_Model_page')
-# plt.show()
+LDA_model_list, LDA_coherence_values = LDA_coherence_values(dictionary=dictionary, corpus=corpus, 
+                                                          texts=comments, start=10, limit=150, step=5)
+
+Mallet_model_list, Mallet_coherence_values = LdaMallet_coherence_values(dictionary=dictionary, corpus=corpus, 
+                                                          texts=comments, start=5, limit=500, step=5)
+
+
+limit = 500
+start=5
+step=5
+x = range(start, limit, step)
+plt.plot(x, LDA_coherence_values)
+plt.plot(x[np.argmax(LDA_coherence_values)], max(LDA_coherence_values), 'or')
+plt.text(x[np.argmax(LDA_coherence_values)]+0.2, max(LDA_coherence_values), 
+         r'({}, {})'.format(x[np.argmax(LDA_coherence_values)], np.round(max(LDA_coherence_values), 2)))
+plt.xlabel('Num Topics')
+plt.ylabel('Coherence score')
+plt.title('Coherence Scores with LDA Algorithm Implementation')
+# plt.savefig('output/Topics_Coher_LDA_Model_page')
+plt.show()
 
 # print('\nLDA model: \n')
 # for num, cv in zip(x, coherence_values):
