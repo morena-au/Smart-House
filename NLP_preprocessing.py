@@ -73,12 +73,11 @@ stop_words.extend(['etc', 'however', 'there', 'also',])
 
 #We specify the stemmer or lemmatizer we want to use
 word_rooter = nltk.stem.snowball.PorterStemmer(ignore_stopwords=False).stem
-wordnet_lemmatizer = WordNetLemmatizer()
 
 # Remove comments where 70% words are not part of the english vocabulary
 english_vocab = set(w.lower() for w in nltk.corpus.words.words())
 
-def clean_comment(comment, lemma=True, allowed_postags=['ADJ', 'ADV', 'VERB', 'NOUN', 'PROPN', 'PRON', 'ADV']):
+def clean_comment(comment, lemma=True, del_tags = ['NUM', 'PRON']):
     comment = comment.lower() # ? consider to make general the name of companies or decives
     comment = re.sub(r'&gt', ' ', comment) # remove all copied text into a comment '&gt'
     comment = re.sub(r'&amp;', ' ', comment) # & charcter
@@ -106,12 +105,11 @@ def clean_comment(comment, lemma=True, allowed_postags=['ADJ', 'ADV', 'VERB', 'N
     
     # keeps word meaning: important to infer what the topic is about
     if lemma == True:
-        # Initialize spacy 'en' model, keeping only tagger component (for efficiency)
-        nlp = spacy.load('en_core_web_sm', disable=['parser', 'ner'])
+        # Initialize spacy 'en' model
+        nlp = spacy.load('en_core_web_sm')
         # https://spacy.io/api/annotation
         comment_text = nlp(' '.join(comment_token_list))
-        comment_token_list = [token.lemma_ for token in comment_text if token.pos_ in allowed_postags]
-        #comment_token_list = [wordnet_lemmatizer.lemmatize(word) for word in comment_token_list]
+        comment_token_list = [token.lemma_ for token in comment_text if token.pos_ not in del_tags]
     
     # harsh to the root of the word
     else:
@@ -131,4 +129,4 @@ df = df[df['clean_body'].map(lambda x: len(str(x).strip().split())) >= 2]
 df = df[df['author'] != 'RemindMeBot']
 
 # write the csv file
-df.to_csv('preprocessed_comments.csv', index = False)
+df.to_csv('preprocessed_comments.csv', index = True)
