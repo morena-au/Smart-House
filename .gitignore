@@ -12,3 +12,5 @@ old
 reddit_comments.csv
 password.txt
 preprocessed_comments.csv
+logging
+evaluation_metrics
