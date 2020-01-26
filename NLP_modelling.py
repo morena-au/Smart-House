@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from gensim.matutils import corpus2csc
-from gensim.models import CoherenceModel
+from gensim.models import CoherenceModel, LdaModel
 from gensim.models.wrappers import LdaMallet
 from gensim.test.utils import datapath
 from tmtoolkit.topicmod import evaluate, tm_lda
@@ -19,43 +19,7 @@ from tmtoolkit.topicmod import evaluate, tm_lda
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-df = pd.read_csv('preprocessed_comments.csv')
-
-# Train Bigram and Trigram Models
-# higher threshold fewer phrases.
-comment_token_list = df['clean_body'].map(lambda x: str(x).strip().split())
-
-bigram = gensim.models.Phrases(comment_token_list, min_count=70, threshold=15)
-trigram = gensim.models.Phrases(bigram[comment_token_list], min_count=70, threshold=15)
-
-dist = nltk.FreqDist(
-    [word for comment in trigram[bigram[comment_token_list]] for word in comment if '_' in word])
-
-# Sort frequency
-print('Sorted trigrams: \n')
-print(sorted(dist.items(), key=lambda x: x[1], reverse=True))
-print('-'*20)
-
-df['clean_body'] = list(trigram[bigram[comment_token_list]])
-df['clean_body'] = df['clean_body'].map(lambda x: ' '.join(x))
-
-# function to plot most frequent terms
-def freq_words(x, ascending=False, terms = 30):
-  all_words = ' '.join([text for text in x])
-  all_words = all_words.split()
-
-  fdist = nltk.FreqDist(all_words)
-  words_df = pd.DataFrame({'word':list(fdist.keys()), 'count':list(fdist.values())})
-
-  # selecting top most frequent words
-  d = words_df.sort_values("count", ascending=ascending)
-  plt.figure(figsize=(20,5))
-  ax = sns.barplot(data=d[:terms], x= "word", y = "count")
-  ax.set(ylabel = 'Count')
-  plt.xticks(rotation=45)
-  plt.show()
-
-freq_words(df['clean_body'], True, 50)
+df = pd.read_csv('preprocessed_comments50k.csv', index_col=0)
 
 # Create a new columns with tokens
 comments = df['clean_body'].map(lambda x: str(x).strip().split())
@@ -66,12 +30,12 @@ dictionary = corpora.Dictionary(comments)
 # [k for k, v in dictionary.items() if v == 'trust']
 
 # Verify deleted words
-#tmp = dict(dictionary)
-#len(dictionary)
+# tmp = dict(dictionary)
+# len(dictionary)
 
 # Filter out words that occur less than 2 comments, or more than 90% of comments
-dictionary.filter_extremes(no_below=2, no_above=0.9) 
-# words very sparse, no_above 0.20 for digit and use
+dictionary.filter_extremes(no_below=2, no_above=0.8) 
+# words very sparse
 # NOTE: consider to increase the number of comments
 #len(dictionary)
 #[v for v in tmp.values() if v not in dictionary.values()]
@@ -79,6 +43,13 @@ dictionary.filter_extremes(no_below=2, no_above=0.9)
 # Term Document Frequency >> (id, freq) for each page
 corpus = [dictionary.doc2bow(text) for text in comments]
 #[(dictionary[k], f) for k, f in corpus[0]]
+
+# Words used in how many comments?
+# unique_words_comment = [dictionary[w[0]] for k in corpus for w in k]
+# unique_words_comment = pd.DataFrame(unique_words_comment)
+# unique_words_comment[0].value_counts().describe()
+# tmp = unique_words_comment[0].value_counts()
+# tmp.to_csv('tot_50k_dict.csv', header=None, index=True)
 
 ## MODELS
 # Download mallet software and run following commands on powershell
@@ -95,9 +66,8 @@ logging.basicConfig(filename=log_file,
 # Find the optimal number of topics
 
 
-def LdaMallet_coherence_values(dictionary, corpus, texts, limit, start, step):
+def LdaMallet_topics(dictionary, corpus, texts, limit, start, step):
     '''
-    Compute c_v coherence for various number of topics
     
     Parameters:
     ---------
@@ -108,55 +78,133 @@ def LdaMallet_coherence_values(dictionary, corpus, texts, limit, start, step):
     
     Returns:
     ---------
-    model_list: list of LDA topic models
-    coherence_values: corresponding to the LDA model
+    model_list: list of LDA Mallet topic models
     '''
 
     os.environ['MALLET_HOME'] = r'C:\\mallet-2.0.8\\'
     mallet_path = r'C:\\mallet-2.0.8\\bin\\mallet'
     model_list = []
-    coherence_values = []
 
     for num_topics in range(start, limit, step):
         print('Running model with number of topics: ', num_topics)
         model = LdaMallet(mallet_path, corpus = corpus, 
-                          num_topics = num_topics, id2word = dictionary)
+                          num_topics = num_topics, id2word = dictionary, 
+                          random_seed=123)
 
         model_list.append(model)
 
-        coherencemodel = CoherenceModel(model = model, texts = texts,
-                                        dictionary = dictionary, coherence = 'c_v')
+    return model_list
 
-        coherence_values.append(coherencemodel.get_coherence())
+# Mallet_model_list = LdaMallet_topics(dictionary=dictionary, corpus=corpus, 
+#                                                           texts=comments, start=5, limit=200, step=5)
+# SAVE MODELS
+# for i, num in zip(Mallet_model_list, range(5, 200, 5)):
+#     tmp_file = datapath('LdaMallet_model\\model{:d}'.format(num))
+#     i.save(tmp_file)
 
-    return model_list, coherence_values
+# SAVE DICTIONARY
+tmp_file = datapath('dictionary50mi')
+dictionary.save(tmp_file)
 
-Mallet_model_list, Mallet_coherence_values = LdaMallet_coherence_values(dictionary=dictionary, corpus=corpus, 
-                                                          texts=comments, start=5, limit=200, step=5)
-# SAVE
-for i, num in zip(Mallet_model_list, range(5, 200, 5)):
-    tmp_file = datapath('train_model\\model{:d}'.format(num))
+
+def LdaGensim_topics(dictionary, corpus, texts, limit, start, step, alpha, beta):
+    '''
+    Parameters:
+    ---------
+    dictionary: Gensim dictionary
+    corpus: Gensim corpus
+    texts: list of input text 
+    chunksize: number of documents to be used in each training chunk
+    limit: max num of topics
+
+    Returns:
+    ---------
+    model_list: list of LDA topic
+    '''
+
+    model_1_001 = []
+    model_10_01 = []
+    model_50_05 = []
+
+    passage = 0
+    for a, b in zip(alpha, beta):
+        for num_topics in range(start, limit, step):
+            print('Running model with number of topics: ', num_topics)
+            model = gensim.models.ldamodel.LdaModel(corpus=corpus, id2word=dictionary,
+                                                    num_topics=num_topics, random_state=123, 
+                                                    update_every=1, chunksize=50000, passes=5, 
+                                                    alpha=[a]*num_topics, eta=b,  per_word_topics=True)
+            
+            if passage == 0:
+                print('Saving model with alpha=1/k and beta=0.01')
+                model_1_001.append(model)
+                
+            if passage == 1:
+                print('Saving model with alpha=10/k and beta=0.1')
+                model_10_01.append(model)
+
+            if passage == 2:
+                print('Saving model with alpha=50/k and beta=0.5')
+                model_50_05.append(model)
+        
+        passage +=1
+        print('\n')
+
+    return model_1_001, model_10_01, model_50_05
+
+model_1_001, model_10_01, model_50_05 = LdaGensim_topics(dictionary=dictionary, corpus=corpus, 
+                                                            texts=comments, start=5, limit=501, step=5, alpha = [1.00, 10.00, 50.00], beta = [0.01, 0.1, 0.5])
+
+
+
+# SAVE MODELS
+for i, num in zip(model_1_001, range(5, 501, 5)):
+    tmp_file = datapath('model_1_001\\{:d}'.format(num))
     i.save(tmp_file)
 
-coherence_gensim_c_v = Mallet_coherence_values
+for i, num in zip(model_10_01, range(5, 501, 5)):
+    tmp_file = datapath('model_10_01\\{:d}'.format(num))
+    i.save(tmp_file)
 
-cao_juan_2009 =[]
-arun_2010 =[]
-coherence_mimno_2011 = []
+for i, num in zip(model_50_05, range(5, 501, 5)):
+    tmp_file = datapath('model_50_05\\{:d}'.format(num))
+    i.save(tmp_file)
 
 
-for i in range(len(Mallet_model_list)):
-    cao_juan_2009.append(evaluate.metric_cao_juan_2009(Mallet_model_list[i].get_topics()))
+#NOTE: multicores implementation
+def LdaGensim_topics_one_model(dictionary, corpus, texts, limit, start, step, alpha, beta):
+    '''
+    Parameters:
+    ---------
+    dictionary: Gensim dictionary
+    corpus: Gensim corpus
+    texts: list of input text 
+    chunksize: number of documents to be used in each training chunk
+    limit: max num of topics
 
-    arun_2010.append(evaluate.metric_arun_2010(Mallet_model_list[i].get_topics(),  
-                        np.array([x.transpose()[1] for x in np.array(list(Mallet_model_list[i].load_document_topics()))]),
-                        np.array([len(x) for x in comments])))
+    Returns:
+    ---------
+    model_list: list of LDA topic
+    '''
 
-    coherence_mimno_2011.append(evaluate.metric_coherence_mimno_2011(Mallet_model_list[i].get_topics(), 
-                                                                corpus2csc(corpus).transpose(), return_mean=True))
+    model_01_0001 = []
 
-# Write evaluation metrics
-pd.DataFrame(coherence_gensim_c_v).to_csv('coherence_gensim_c_v.csv', header=False)
-pd.DataFrame(cao_juan_2009).to_csv('cao_juan_2009.csv', header=False)
-pd.DataFrame(arun_2010).to_csv('arun_2010.csv', header=False)
-pd.DataFrame(coherence_mimno_2011).to_csv('coherence_mimno_2011.csv', header=False)
+    for num_topics in range(start, limit, step):
+        print('Running model with number of topics: ', num_topics)
+        model = gensim.models.ldamodel.LdaModel(corpus=corpus, id2word=dictionary,
+                                                num_topics=num_topics, random_state=123, 
+                                                update_every=1, chunksize=50000, passes=5, 
+                                                alpha=[alpha]*num_topics, eta=beta,  per_word_topics=True)
+        
+        print('Saving model with alpha=0.1/k and beta=0.001')
+        model_01_0001.append(model)
+
+
+    return model_01_0001
+
+model_01_0001 = LdaGensim_topics_one_model(dictionary=dictionary, corpus=corpus, 
+                                                            texts=comments, start=5, limit=501, step=5, alpha = 0.1, beta = 0.001)
+
+for i, num in zip(model_01_0001, range(5, 501, 5)):
+    tmp_file = datapath('model_01_0001\\{:d}'.format(num))
+    i.save(tmp_file)
