@@ -11,6 +11,7 @@ import pandas as pd
 import spacy
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
+import re
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -45,9 +46,48 @@ comments = pd.DataFrame(np.array(comments),
                                  'body', 'author', 'permalink', 'score',\
                                  'subreddit', 'category'])
 
-# Randomly select num_comments for each subreddit
-df = pd.concat([comments[comments['subreddit'] == 'smarthome'].sample(n=25000, random_state=123),
-                            comments[comments['subreddit'] == 'homeautomation'].sample(n=25000, random_state=123)])
+# Randomly select num_comments for each subreddit where link_id == parent_id 
+# Fist tier comments
+tmp = comments[comments['link_id'] == comments['parent_id']]
+df = pd.concat([tmp[tmp['subreddit'] == 'smarthome'].sample(n=5000, random_state=123),
+                            tmp[tmp['subreddit'] == 'homeautomation'].sample(n=5000, random_state=123)])
+
+# add a parent id column without t#_
+comments['id_parent_copy'] = [re.sub('.+_', '', x) for x in comments['parent_id']]
+# initiate an empty database 
+df_tree = pd.DataFrame(columns = ['tree_ids', 'tree_bodies'])
+
+for first_com in df.loc[:, 'link_id'].unique()[:3]: # Comments from 7283 submission
+    # For each parent_id get all comments with the same link_id
+    # Get all comments within the same submission
+    first_tier = comments[comments['link_id'] == first_com]
+    # Initiate an empty tree
+    tree_ids = []
+    tree_bodies = []
+    # Isolete the selected first tier comment >> could be more than one
+    for init_i in list(df['id'][df['link_id'] == first_com]):
+        tree_ids.append(init_i)
+        tree_bodies.append(''.join(list(df['body'][df['id'] == init_i])))
+
+        # concatenate all the children 
+        i = []
+        i.append(init_i)
+        while not comments[comments['id_parent_copy'].isin(i)].empty:
+            # all rows in sorted tmp inserted in tree_ids and tree bodies
+            # all comments in the same tier are concatenate to each other
+            sorted_tmp = comments[comments['id_parent_copy'].isin(i)].sort_values(by = ['created_utc'], ascending=False)
+            num = list(df['id'][df['link_id'] == first_com]).index(init_i)
+            tree_ids[num] += ' <NEW TIER> ' + ' <SAME TIER> '.join(list(sorted_tmp['link_id']))
+            tree_bodies[num] += ' <NEW TIER> ' + ' <SAME TIER> '.join(list(sorted_tmp['body']))
+            i = list(sorted_tmp['id'])
+
+    # store in a new database
+    for n_row in range(len(tree_ids)):
+        df_tree = df_tree.append({'tree_ids': tree_ids[n_row], 'tree_bodies': tree_bodies[n_row]}, ignore_index=True)
+
+
+# extract all comments with the same parent_id
+
 
 # Cleaning up the comments
 # nltk.download('stopwords')  # (run python console)
