@@ -1,3 +1,7 @@
+# Create a new data source where text has the following form:
+# “submission title” <SUB> “submission selftext” <SUB>  “first tier comment” 
+# <NEW TIER> “second tier comment” <SAME TIER> “second tier comment” etc..
+
 import re
 import warnings
 from contextlib import contextmanager
@@ -88,7 +92,7 @@ try:
                 # all comments in the same tier are concatenate to each other
                 sorted_tmp = comments[comments['id_parent_copy'].isin(i)].sort_values(by = ['created_utc'], ascending=False)
                 num = list(df['id'][df['link_id'] == first_com]).index(init_i)
-                tree_ids[num] += ' <NEW TIER> ' + ' <SAME TIER> '.join(list(sorted_tmp['link_id']))
+                tree_ids[num] += ' <NEW TIER> ' + ' <SAME TIER> '.join(list(sorted_tmp['id']))
                 tree_bodies[num] += ' <NEW TIER> ' + ' <SAME TIER> '.join([str(elm) for elm in list(sorted_tmp['body'])])
                 i = list(sorted_tmp['id'])
 
@@ -106,8 +110,6 @@ df_tree['id'] = [re.sub('\\s.*', '',x) for x in  df_tree['tree_ids']]
 
 df_tree = df_tree.merge(comments.loc[:, ['id','link_id']], on = 'id')
 df_tree = df_tree.merge(submissions.loc[:, ['link_id', 'title', 'selftext']], on='link_id')
-
-df_tree['text'] =[' <SUB> '.join([df_tree['title'][num], df_tree['selftext'][num], df_tree['tree_bodies'][num]]) for num in range(df_tree.shape[0])]
 
 
 df_tree.to_csv('df_tree.csv', index=False)
