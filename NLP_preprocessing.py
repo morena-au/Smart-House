@@ -12,6 +12,9 @@ import spacy
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 import re
+from sklearn.model_selection import train_test_split
+import html
+
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -41,53 +44,64 @@ with mysql_connection() as mycursor:
     mycursor.execute('SELECT * FROM reddit_comments')
     comments = mycursor.fetchall()
 
+with mysql_connection() as mycursor:
+    mycursor.execute('SELECT * FROM reddit_submissions')
+    submissions = mycursor.fetchall()
+
+
 comments = pd.DataFrame(np.array(comments), 
                         columns=['id', 'link_id', 'parent_id', 'created_utc',\
                                  'body', 'author', 'permalink', 'score',\
-                                 'subreddit', 'category'])
+                                 'subreddit'])
 
-# Randomly select num_comments for each subreddit where link_id == parent_id 
-# Fist tier comments
-tmp = comments[comments['link_id'] == comments['parent_id']]
-df = pd.concat([tmp[tmp['subreddit'] == 'smarthome'].sample(n=5000, random_state=123),
-                            tmp[tmp['subreddit'] == 'homeautomation'].sample(n=5000, random_state=123)])
+submissions = pd.DataFrame(np.array(submissions), 
+                        columns=['id', 'created_utc',\
+                                 'title', 'selftext', 'author', 'permalink', 'score',\
+                                 'subreddit', 'num_comments', 'link_id'])
 
-# add a parent id column without t#_
-comments['id_parent_copy'] = [re.sub('.+_', '', x) for x in comments['parent_id']]
-# initiate an empty database 
-df_tree = pd.DataFrame(columns = ['tree_ids', 'tree_bodies'])
+# import new granularity file
+df = pd.read_csv("df_tree.csv", encoding='utf8')
 
-for first_com in df.loc[:, 'link_id'].unique()[:3]: # Comments from 7283 submission
-    # For each parent_id get all comments with the same link_id
-    # Get all comments within the same submission
-    first_tier = comments[comments['link_id'] == first_com]
-    # Initiate an empty tree
-    tree_ids = []
-    tree_bodies = []
-    # Isolete the selected first tier comment >> could be more than one
-    for init_i in list(df['id'][df['link_id'] == first_com]):
-        tree_ids.append(init_i)
-        tree_bodies.append(''.join(list(df['body'][df['id'] == init_i])))
+# Drop comments from bots
+bots = ['_whatbot_', '_youtubot_', 'alotabot', 'anti-gif-bot', 
+'by-accident-bot', 'checks_out_bot', 'cheer_up_bot', 'clichebot9000', 'could-of-bot', 'doggobotlovesyou', 
+'gifv-bot', 'gram_bot', 'haikubot-1911', 'have_bot', 'icarebot', 'image_linker_bot', 
+'imguralbumbot', 'navigatorbot', 'of_have_bot', 'phonebatterylevelbot', 'remembertosmilebot', 
+'robot_overloard', 'serendipitybot', 'sneakpeekbot', 
+'spellingbotwithtumor', 'substitute-bot', 'thank_mr_skeltal_bot', 'thelinkfixerbot', 
+'timezone_bot', 'turtle__bot', 'tweettranscriberbot', 'video_descriptbotbot', 
+'video_descriptionbot', 'yourewelcome_bot', 'youtubefactsbot']
 
-        # concatenate all the children 
-        i = []
-        i.append(init_i)
-        while not comments[comments['id_parent_copy'].isin(i)].empty:
-            # all rows in sorted tmp inserted in tree_ids and tree bodies
-            # all comments in the same tier are concatenate to each other
-            sorted_tmp = comments[comments['id_parent_copy'].isin(i)].sort_values(by = ['created_utc'], ascending=False)
-            num = list(df['id'][df['link_id'] == first_com]).index(init_i)
-            tree_ids[num] += ' <NEW TIER> ' + ' <SAME TIER> '.join(list(sorted_tmp['link_id']))
-            tree_bodies[num] += ' <NEW TIER> ' + ' <SAME TIER> '.join(list(sorted_tmp['body']))
-            i = list(sorted_tmp['id'])
+bot_ids = []
+for i in bots:
+    for x in list(comments.loc[comments.author == i, "id"]):
+        bot_ids.append(x)
 
-    # store in a new database
-    for n_row in range(len(tree_ids)):
-        df_tree = df_tree.append({'tree_ids': tree_ids[n_row], 'tree_bodies': tree_bodies[n_row]}, ignore_index=True)
+for i in bot_ids:
+    contain = df.tree_ids.str.contains(i).unique()
+    if len(contain) > 1:
+        row = df.index[df.tree_ids.str.contains(i)].to_list()[0]
+        id_list = re.split(r"\s(<.*?>)\s", df.iloc[row, 0])
+        # remove corresponding body
+        body_list = re.split(r"\s(<.*?>)\s", df.iloc[row, 1])
+        idx = [num for num, elem in enumerate(id_list) if elem.strip() == i][0]
+        del id_list[idx-1 : idx+1]
+        # update with the new id list
+        df.iloc[row, 0] = ' '.join(id_list)
+        del body_list[idx-1 : idx+1]
+        # update with the new body list
+        df.iloc[row, 1] = ' '.join(body_list)
 
+# drop rows left without comments
+df.drop(df.index[df.tree_ids == "",].tolist(), axis=0, inplace=True)
 
-# extract all comments with the same parent_id
+# Concatenate sub. text with text from one tree
+df['text'] = df["title"].astype(str) + " <SUB> " +\
+             df["selftext"].astype(str) + " <SUB> " +\
+             df["tree_bodies"].astype(str)
 
+df['text'] =[' <SUB> '.join([df['title'][num], df['selftext'][num],
+                             df['tree_bodies'][num]]) for num in range(df.shape[0])]
 
 # Cleaning up the comments
 # nltk.download('stopwords')  # (run python console)
@@ -97,19 +111,27 @@ for first_com in df.loc[:, 'link_id'].unique()[:3]: # Comments from 7283 submiss
 # Extracting URLs: external links often informative, but they add unwanted noise to our NLP model
 # Strip out hyperlinks and copy thme in a new column URL
 
-# remove rows with less than two words
-df = df[df['body'].map(lambda x: len(str(x).strip().split())) >= 2]
-
 # Find URL
 def find_URL(comment):
     return re.findall(r'((?:https?:\/\/)(?:\w[^\)\]\s]*))', comment)
 
-df['URL'] = df.body.apply(find_URL)
+df['URL'] = df.text.apply(find_URL)
 
-# create a colummn with pre-processed:
-df['clean_body'] = [re.sub(r"((?:https?:\/\/)(?:\w[^\)\]\s]*))",'', x) for x in df['body']]
+# create a colummn with the pre-processed text:
+# remove URLs
+df['clean_text'] = [re.sub(r"((?:https?:\/\/)(?:\w[^\)\]\s]*))",'', x) for x in df['text']]
+
+# Unscape html formatting
+df['clean_text'] =  [html.unescape(x) for x in df['clean_text']]
 
 #NOTE: consider internal hyphen as full words. "Technical vocabulary"
+# pattern = re.compile(r"\b(\w*)-(\w*)\b", re.I)
+# hyphen_words = []
+# for i in df.clean_text:
+#     hyphen_words.append(pattern.findall(i))
+
+df['clean_text'] = [re.sub(r"\b(\w*)-(\w*)\b", r"\g<1>_\g<2>", x) for x in df['clean_text']]
+
 
 # NLTK Stop words
 stop_words = stopwords.words('english')
@@ -121,14 +143,15 @@ word_rooter = nltk.stem.snowball.PorterStemmer(ignore_stopwords=False).stem
 # Remove comments where 70% words are not part of the english vocabulary
 english_vocab = set(w.lower() for w in nltk.corpus.words.words())
 
+## FROM HERE
+
 def clean_comment(comment, lemma=True, del_tags = ['NUM', 'PRON']):
+    comment = re.sub(r"(<SUB>|nan|<NEW TIER>|<SAME TIER>)", "", comment)
     comment = comment.lower() # ? consider to make general the name of companies or decives
-    comment = re.sub(r'&gt', ' ', comment) # remove all copied text into a comment '&gt'
-    comment = re.sub(r'&amp;', ' ', comment) # & charcter
-    comment = re.sub(r'#x200b;', ' ', comment) # zero-witdh space
+    comment = re.sub(r'&#x200B', ' ', comment) # character code for a zero-width space
     comment = re.sub(r'remindme![\w\s\W]*$', ' ', comment) # remove call to remind me bot
     comment = re.sub(r'[^\s\w\$]', ' ', comment) # strip out everything (punctuation) that is not Unicode whitespace or word character
-    comment = re.sub(r'[_]', ' ', comment) # remove underscores around a words (italics)
+    #comment = re.sub(r'[_]', ' ', comment) # remove underscores around a words (italics)
     comment = re.sub(r'[0-9]+', 'digit', comment) # remove digits
     comment = re.sub(r'\$', 'dollar', comment)
 
