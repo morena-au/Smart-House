@@ -6,6 +6,7 @@ import mysql.connector
 from contextlib import contextmanager
 import pandas as pd
 from sys import argv
+import re
 
 # unpacks argv
 # pylint: disable=unbalanced-tuple-unpacking
@@ -42,7 +43,7 @@ if table == "comments":
                                     'body', 'author', 'permalink', 'score',\
                                     'subreddit'])
 
-    possible_bots = np.sort(comments.loc[comments.author.str.contains('bot'), "author"].unique())
+    possible_bots = np.sort(comments.loc[comments.author.str.contains('bot', flags = re.IGNORECASE), "author"].unique())
 
     bots = []
     for i in possible_bots:
@@ -83,7 +84,7 @@ if table == "submissions":
                                     'title', 'selftext', 'author', 'permalink', 'score',\
                                     'subreddit', 'num_comments', 'link_id'])
 
-    possible_bots = np.sort(submissions.loc[submissions.author.str.contains('bot'), "author"].unique())
+    possible_bots = np.sort(submissions.loc[submissions.author.str.contains('bot', flags = re.IGNORECASE), "author"].unique())
 
     bots = []
     for i in possible_bots:
