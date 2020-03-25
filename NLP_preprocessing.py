@@ -63,7 +63,7 @@ submissions = pd.DataFrame(np.array(submissions),
                                  'subreddit', 'num_comments', 'link_id'])
 
 # import new granularity file
-df = pd.read_csv("df_tree.csv", encoding='utf8')
+df = pd.read_csv(".\\DataSource_backup\\df_tree.csv", encoding='utf8')
 
 # Drop comments from bots
 bots = ['_whatbot_', '_youtubot_', 'alotabot', 'anti-gif-bot', 
@@ -73,7 +73,15 @@ bots = ['_whatbot_', '_youtubot_', 'alotabot', 'anti-gif-bot',
 'robot_overloard', 'serendipitybot', 'sneakpeekbot', 
 'spellingbotwithtumor', 'substitute-bot', 'thank_mr_skeltal_bot', 'thelinkfixerbot', 
 'timezone_bot', 'turtle__bot', 'tweettranscriberbot', 'video_descriptbotbot', 
-'video_descriptionbot', 'yourewelcome_bot', 'youtubefactsbot']
+'video_descriptionbot', 'yourewelcome_bot', 'youtubefactsbot', 'TitleLinkHelperBot', 
+'Link-Help-Bot', 'vReddit_Player_Bot', 'IrrelevantXKCD-Bot', 'GoodBot_BadBot', 'DuplicatesBot', 
+'im-dad-bot', 'LinkReplyBot', 'hinkbot', 'YTubeInfoBot', 'CommonMisspellingBot', 'WikiTextBot', 
+'10_LETTERS_BOT', 'Yasuo_Spelling_Bot', 'BadBotPSA', 'HA-Helper-Bot', 'TerribleJokeBot', 'Polite_Users_Bot', 
+'LimbRetrieval-Bot', 'The-Worst-Bot', 'CakeDayGIFt_Bot', 'JoeBidenBot', 'HelperBot_', 'CakeDay--Bot', 'HappyNumberBot', 
+'PORTMANTEAU-BOT', 'TheSwearBot', 'QuoteMe-Bot', 'FatFingerHelperBot', 'RemindMeBot', 'AlexaPlayBot', 
+'SmallSubBot', 'aardBot', 'itchy_robot', 'Sub_Corrector_Bot', 'umnikos_bots', 'NoMoreMisspellingBot', 
+'JeopardyQBot', 'iotaTipBot', 'ComeOnMisspellingBot', 'Bot_Metric']
+
 
 bot_ids = []
 for i in bots:
@@ -102,9 +110,6 @@ df.drop(df.index[df.tree_ids == "",].tolist(), axis=0, inplace=True)
 df['text'] = df["title"].astype(str) + " <SUB> " +\
              df["selftext"].astype(str) + " <SUB> " +\
              df["tree_bodies"].astype(str)
-
-df['text'] =[' <SUB> '.join([df['title'][num], df['selftext'][num],
-                             df['tree_bodies'][num]]) for num in range(df.shape[0])]
 
 # Cleaning up the comments
 # nltk.download('stopwords')  # (run python console)
@@ -165,7 +170,7 @@ word_rooter = nltk.stem.snowball.PorterStemmer(ignore_stopwords=False).stem
 
 # load default word frequency list for misspelling
 spell = SpellChecker()
-spell.word_frequency.load_text_file('.\\free_text.txt')
+spell.word_frequency.load_text_file('.\\DataSource_backup\\free_text.txt')
 
 # Remove comments where 70% words are not part of the english vocabulary
 english_vocab = set(w.lower() for w in nltk.corpus.words.words())
@@ -194,7 +199,7 @@ def clean_comment(comment, lemma=True, del_tags = ['NUM', 'PRON', 'ADV', 'DET', 
         pass
 
     # remove stop_words
-    comment_token_list = [word for word in comment.strip().split() if word not in stop_words and len(word)>2]
+    comment_token_list = [word for word in comment.strip().split() if word not in stop_words and len(word)>1]
 
     # comment = ' '.join(comment_token_list)
     # return comment
@@ -235,14 +240,12 @@ def clean_comment(comment, lemma=True, del_tags = ['NUM', 'PRON', 'ADV', 'DET', 
 # Apply function to clean the comment
 df['clean_text'] = df.clean_text.apply(clean_comment)
 
+df.to_csv('sub_onetree.csv', index=False, encoding='utf-8')
 
 # FROM HERE
 
 # remove rows with less than 2 word
 df = df[df['clean_body'].map(lambda x: len(str(x).strip().split())) >= 2]
-
-# delete RemindMeBot  
-df = df[df['author'] != 'RemindMeBot']
 
 #df.to_csv('50miclean.csv', index = True)
 # Train Bigram and Trigram Models
