@@ -16,3 +16,4 @@ logging
 evaluation_metrics
 Evaluation
 df_tree.csv
+free_text.txt

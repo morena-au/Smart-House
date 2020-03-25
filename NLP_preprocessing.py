@@ -14,6 +14,9 @@ from nltk.stem import WordNetLemmatizer
 import re
 from sklearn.model_selection import train_test_split
 import html
+#import twokenize as ark
+from spellchecker import SpellChecker
+#import codecs
 
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -135,27 +138,50 @@ df['clean_text'] = [re.sub(r"\b(\w*)-(\w*)\b", r"\g<1>_\g<2>", x) for x in df['c
 
 # NLTK Stop words
 stop_words = stopwords.words('english')
-stop_words.extend(['etc', 'however', 'there', 'also', 'digit'])
+
+#Stopwords list from https://github.com/Yoast/YoastSEO.js/blob/develop/src/config/stopwords.js
+more_stopwords = ["a", "about", "above", "after", "again", "against", "all", "am", "an", "and",
+             "any", "are", "as", "at", "be", "because", "been", "before", "being", "below",
+             "between", "both", "but", "by", "could", "did", "do", "does", "doing", "down",
+             "during", "each", "few", "for", "from", "further", "had", "has", "have",
+             "having", "he", "he'd", "he'll", "he's", "her", "here", "here's", "hers",
+             "herself", "him", "himself", "his", "how", "how's", "i", "i'd", "i'll", "i'm",
+             "i've", "if", "in", "into", "is", "it", "it's", "its", "itself", "let's", "me",
+             "more", "most", "my", "myself", "nor", "of", "on", "once", "only", "or", "other",
+             "ought", "our", "ours", "ourselves", "out", "over", "own", "same", "she", "she'd",
+             "she'll", "she's", "should", "so", "some", "such", "than", "that", "that's", "the",
+             "their", "theirs", "them", "themselves", "then", "there", "there's", "these",
+             "they", "they'd", "they'll", "they're", "they've", "this", "those", "through",
+             "to", "too", "under", "until", "up", "very", "was", "we", "we'd", "we'll",
+             "we're", "we've", "were", "what", "what's", "when", "when's", "where",
+             "where's", "which", "while", "who", "who's", "whom", "why", "why's",
+             "with", "would", "you", "you'd", "you'll", "you're", "you've", "your",
+             "yours", "yourself", "yourselves"]
+
+stop_words.extend(list(set(more_stopwords) - set(stop_words)) + ['etc', 'however', 'there', 'also', 'digit'])
 
 #We specify the stemmer or lemmatizer we want to use
 word_rooter = nltk.stem.snowball.PorterStemmer(ignore_stopwords=False).stem
 
+# load default word frequency list for misspelling
+spell = SpellChecker()
+spell.word_frequency.load_text_file('.\\free_text.txt')
+
 # Remove comments where 70% words are not part of the english vocabulary
 english_vocab = set(w.lower() for w in nltk.corpus.words.words())
 
-## FROM HERE
-
-def clean_comment(comment, lemma=True, del_tags = ['NUM', 'PRON']):
+def clean_comment(comment, lemma=True, del_tags = ['NUM', 'PRON', 'ADV', 'DET', 'AUX', 'SCONJ', 'PART']):
     comment = re.sub(r"(<SUB>|nan|<NEW TIER>|<SAME TIER>)", "", comment)
     comment = comment.lower() # ? consider to make general the name of companies or decives
     comment = re.sub(r'&#x200B', ' ', comment) # character code for a zero-width space
     comment = re.sub(r'remindme![\w\s\W]*$', ' ', comment) # remove call to remind me bot
-    comment = re.sub(r'[^\s\w\$]', ' ', comment) # strip out everything (punctuation) that is not Unicode whitespace or word character
-    #comment = re.sub(r'[_]', ' ', comment) # remove underscores around a words (italics)
-    comment = re.sub(r'[0-9]+', 'digit', comment) # remove digits
-    comment = re.sub(r'\$', 'dollar', comment)
+    comment = re.sub(r'\n', ' ', comment) # remove new line formatting
+    comment = re.sub(r'(\[deleted\]|\[removed\])', '', comment)
+    comment = re.sub(r"[^\w\s]", ' ', comment) # punctuation and emoji
+    comment = re.sub(r'(\s_|_\s)', '', comment) # remove underscores around a words (italics)
 
-    # detect no english comments and remove them (14714)
+
+    # detect no english comments and remove them 
     #nltk.download('words')
     text_vocab = set(w for w in comment.strip().split() if w.isalpha())
     unusual = text_vocab.difference(english_vocab) 
@@ -168,14 +194,34 @@ def clean_comment(comment, lemma=True, del_tags = ['NUM', 'PRON']):
         pass
 
     # remove stop_words
-    comment_token_list = [word for word in comment.strip().split() if word not in stop_words]
-    
+    comment_token_list = [word for word in comment.strip().split() if word not in stop_words and len(word)>2]
+
+    # comment = ' '.join(comment_token_list)
+    # return comment
+    # free_text = df.clean_text.apply(clean_comment)
+    # free_text = ' '.join(list(free_text))
+    # with codecs.open("free_text.txt", "w", "utf-8") as file:
+    #     file.write(free_text)
+
+    # # NOTE: missplellings and slangs
+    # misspelled = spell.unknown(comment_token_list)
+    # for word in misspelled:
+    #     print(word)
+    #     print("="*20)
+    #     print(spell.correction(word))
+    #     print("="*20)
+    #     print(spell.candidates(word))
+    # print("ROW ENDING")
+    # input()
+
     # keeps word meaning: important to infer what the topic is about
     if lemma == True:
         # Initialize spacy 'en' model
         nlp = spacy.load('en_core_web_sm')
         # https://spacy.io/api/annotation
         comment_text = nlp(' '.join(comment_token_list))
+        # for token in comment_text:
+        #     print(token.pos_, "\t", token)
         comment_token_list = [token.lemma_ for token in comment_text if token.pos_ not in del_tags]
     
     # harsh to the root of the word
@@ -187,10 +233,11 @@ def clean_comment(comment, lemma=True, del_tags = ['NUM', 'PRON']):
     return comment
 
 # Apply function to clean the comment
-df['clean_body'] = df.clean_body.apply(clean_comment)
+df['clean_text'] = df.clean_text.apply(clean_comment)
 
-# NOTE: missplellings and slangs
-# NOTE: the length of your individual documents should not be too inbalanced and not too short for Topic Modeling
+
+# FROM HERE
+
 # remove rows with less than 2 word
 df = df[df['clean_body'].map(lambda x: len(str(x).strip().split())) >= 2]
 
