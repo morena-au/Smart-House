@@ -17,51 +17,15 @@ import html
 import NLP_visualization as NLP_vis
 #import twokenize as ark
 from spellchecker import SpellChecker
-#import codecs
+import MySQL_data as data
 
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-# Get the passowrd
-with open('password.txt', 'r') as file:
-    database_password = file.readline()
-
-@contextmanager
-def mysql_connection():
-    mydb = mysql.connector.connect(user="root",
-                                   password=database_password,
-                                   host="localhost", 
-                                   port="3305",
-                                   database="reddit_smarthome")
-
-    mycursor = mydb.cursor()
-
-    yield mycursor
-
-    mydb.close()
-    mycursor.close()
-
-
-# import data
-with mysql_connection() as mycursor:
-    mycursor.execute('SELECT * FROM reddit_comments')
-    comments = mycursor.fetchall()
-
-with mysql_connection() as mycursor:
-    mycursor.execute('SELECT * FROM reddit_submissions')
-    submissions = mycursor.fetchall()
-
-
-comments = pd.DataFrame(np.array(comments), 
-                        columns=['id', 'link_id', 'parent_id', 'created_utc',\
-                                 'body', 'author', 'permalink', 'score',\
-                                 'subreddit'])
-
-submissions = pd.DataFrame(np.array(submissions), 
-                        columns=['id', 'created_utc',\
-                                 'title', 'selftext', 'author', 'permalink', 'score',\
-                                 'subreddit', 'num_comments', 'link_id'])
+# get source data for further investigations
+comments = data.comments
+submissions = data.submissions
 
 # import new granularity file
 df = pd.read_csv(".\\DataSource_backup\\df_tree.csv", encoding='utf8')
@@ -201,24 +165,6 @@ def clean_comment(comment, lemma=True, del_tags = ['NUM', 'PRON', 'ADV', 'DET', 
 
     # remove stop_words
     comment_token_list = [word for word in comment.strip().split() if word not in stop_words and len(word)>1]
-
-    # comment = ' '.join(comment_token_list)
-    # return comment
-    # free_text = df.clean_text.apply(clean_comment)
-    # free_text = ' '.join(list(free_text))
-    # with codecs.open("free_text.txt", "w", "utf-8") as file:
-    #     file.write(free_text)
-
-    # # NOTE: missplellings and slangs
-    # misspelled = spell.unknown(comment_token_list)
-    # for word in misspelled:
-    #     print(word)
-    #     print("="*20)
-    #     print(spell.correction(word))
-    #     print("="*20)
-    #     print(spell.candidates(word))
-    # print("ROW ENDING")
-    # input()
 
     # keeps word meaning: important to infer what the topic is about
     if lemma == True:
