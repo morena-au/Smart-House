@@ -35,17 +35,60 @@ from sklearn.feature_extraction.text import (
 from sklearn.manifold import TSNE
 from wordcloud import STOPWORDS, WordCloud
 
-# Load selected model
-model = LdaModel.load(datapath('LdaGensim_50_0.5\\190'))
 
-# write topics on csv file
-topic_10word = model.show_topics(num_topics=190, num_words=10, formatted=False)
+# function to plot most frequent terms
+def freq_words(x, ascending=False, terms = 30):
+    """
+    Plot word frequency
+    Input: pd.Series, direction, num. of words
+    """
+    all_words = ' '.join([text for text in x])
+    all_words = all_words.split()
 
-topic_list = []
-for topic in topic_10word:
-    topic_list.append(topic[1])
+    fdist = nltk.FreqDist(all_words)
+    words_df = pd.DataFrame({'word':list(fdist.keys()), 'count':list(fdist.values())})
 
-pd.DataFrame(topic_list).to_csv('topics_50_05_200.csv', header=None, index=False)
+    # selecting top most frequent words
+    d = words_df.sort_values("count", ascending=ascending)
+    plt.figure(figsize=(20,5))
+    ax = sns.barplot(data=d[:terms], x= "word", y = "count")
+    ax.set(ylabel = 'Count')
+    plt.title("Words Frequency")
+    plt.xticks(rotation=45)
+    plt.show()
+
+# Plot words count distribution across texts
+def words_count(x):
+    """
+    Words count distribution 
+    Input: pd.Series
+    """
+    word_dist = [len(word.strip().split()) for word in x]
+    plt.figure(figsize=(16,7), dpi=160)
+    plt.hist(word_dist, bins = 500, color='navy')
+    plt.text(1000, 450, "Mean   : " + str(round(np.mean(word_dist))))
+    plt.text(1000, 400, "Median : " + str(round(np.median(word_dist))))
+    plt.text(1000, 350, "Stdev   : " + str(round(np.std(word_dist))))
+    plt.text(1000, 300, "1%ile    : " + str(round(np.quantile(word_dist, q=0.01))))
+    plt.text(1000,  250, "99%ile  : " + str(round(np.quantile(word_dist, q=0.99))))
+    plt.gca().set(xlim=(0, max(word_dist)), ylabel='Number of Documents', xlabel='Document Word Count')
+    plt.tick_params(size=16)
+    plt.xticks(np.linspace(0,max(word_dist),18))
+    plt.title('Word Counts Distribution', fontdict=dict(size=22))
+    plt.show()
+
+
+# # Load selected model
+# model = LdaModel.load(datapath('LdaGensim_50_0.5\\190'))
+
+# # write topics on csv file
+# topic_10word = model.show_topics(num_topics=190, num_words=10, formatted=False)
+
+# topic_list = []
+# for topic in topic_10word:
+#     topic_list.append(topic[1])
+
+# pd.DataFrame(topic_list).to_csv('topics_50_05_200.csv', header=None, index=False)
 
 # model_topics = model.show_topics(num_topics=5, num_words=10,formatted = False)
 
