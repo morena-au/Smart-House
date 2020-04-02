@@ -77,6 +77,37 @@ def words_count(x):
     plt.title('Word Counts Distribution', fontdict=dict(size=22))
     plt.show()
 
+def vocabulary_descriptive(dictionary, corpus):
+    """
+    Input: gensim dictionary and corpus
+    Output: Descriptive statistics: word used in how many texts
+    """
+    unique_words_text = pd.DataFrame.from_dict(dictionary.dfs, orient="index")
+    return print(unique_words_text[0].describe())
+
+# function to plot most frequent terms
+def vocabulary_freq_words(dictionary, ascending=False, terms = 30):
+    """
+    Plot word frequency by the number of documents that contains it
+    Input: gensim dictionary, direction, num. of words
+    """
+    
+    dict_id2token = {id_:tok_ for (tok_, id_) in dictionary.token2id.items()}
+    dict_token2freq = {dict_id2token[k]:v for (k,v) in dictionary.dfs.items()}
+
+    words_df = pd.DataFrame.from_dict(dict_token2freq, orient="index", columns=["count"])
+
+    # selecting top most frequent words
+    d = words_df.sort_values("count", ascending=ascending).reset_index()
+    plt.figure(figsize=(20,5))
+    ax = sns.barplot(data=d[:terms], x= "index", y = "count")
+    ax.set(ylabel = 'Count')
+    plt.title("Words Frequency")
+    plt.xticks(rotation=45)
+    plt.show()
+
+
+
 
 # # Load selected model
 # model = LdaModel.load(datapath('LdaGensim_50_0.5\\190'))
