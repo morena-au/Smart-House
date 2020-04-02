@@ -181,6 +181,8 @@ def clean_comment(comment, lemma=True, del_tags = ['NUM', 'PRON', 'ADV', 'DET', 
         comment_token_list = [word_rooter(word) for word in comment_token_list]
 
     comment = ' '.join(comment_token_list)
+
+    #NOTE digits within string
     
     return comment
 
