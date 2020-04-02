@@ -55,7 +55,7 @@ NLP_vis.vocabulary_descriptive(dictionary, corpus)
 
 # Filter out words that occur less than 5 comments, or more than 80% of comments
 dictionary.filter_extremes(no_below=5, no_above=0.4) 
-NLP_vis.dictionary_freq_words(dictionary, False, 30)
+NLP_vis.vocabulary_freq_words(dictionary, False, 30)
 
 
 # ## MODELS
