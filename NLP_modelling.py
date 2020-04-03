@@ -2,6 +2,7 @@ import logging
 import os
 import time
 import warnings
+import copy
 import re
 import gensim
 import gensim.corpora as corpora
@@ -44,9 +45,6 @@ X = bigram_vectorizer.fit_transform(df_train['clean_text'].tolist())
 
 term2id = bigram_vectorizer.vocabulary_
 
-# Return terms per document with nonzero entries in X.
-clean_text = bigram_vectorizer.inverse_transform(X)
-
 # get gensim dictionary
 # https://stackoverflow.com/questions/21552518/using-scikit-learn-vectorizers-and-vocabularies-with-gensim
 # transform sparse matrix into gensim corpus: Term Document Frequency (id, freq) for each text
@@ -57,22 +55,22 @@ dictionary = corpora.Dictionary.from_corpus(corpus, id2word= {v:k for (k, v) in 
 NLP_vis.vocabulary_descriptive(dictionary, corpus)
 
 # Filter out words that occur less than 5 comments, or more than 80% of comments
-dictionary.filter_extremes(no_below=5, no_above=0.4) 
-NLP_vis.vocabulary_freq_words(dictionary, False, 30)
+filter_dict = copy.deepcopy(dictionary)
+filter_dict.filter_extremes(no_below=5, no_above=0.4) 
+NLP_vis.vocabulary_freq_words(filter_dict, False, 30)
 
 # # SAVE DICTIONARY
 # tmp_file = datapath('vocabulary\\nb5_na04')
-# dictionary.save(tmp_file)
+# filter_dict.save(tmp_file)
 
 #Update corpus to the new dictionary
 bigram_vectorizer = CountVectorizer(ngram_range=(1, 2), token_pattern=r'\b\w+\b', 
-                                    vocabulary={term:id_ for (id_, term) in dictionary.items()})
+                                    vocabulary={term:id_ for (id_, term) in filter_dict.items()})
 
 X = bigram_vectorizer.fit_transform(df_train['clean_text'].tolist())
 
 corpus = Sparse2Corpus(X, documents_columns=False)
-dictionary = corpora.Dictionary.from_corpus(corpus, id2word= {v:k for (k, v) in term2id.items()})
-
+NLP_vis.vocabulary_descriptive(filter_dict, corpus)
 
 ## MODELS
 # Download mallet software and run following commands on powershell
@@ -153,11 +151,11 @@ def LdaGensim_topics(dictionary, corpus, limit, start, step, alpha, beta):
                 print('Running model with number of topics (k): ', num_topics)
                 model = LdaMulticore(corpus=corpus, id2word=dictionary,
                                      num_topics=num_topics, random_state=123, 
-                                     # workers= 3,
+                                     passes=10, 
                                      alpha=[a]*num_topics, eta=b,
                                      per_word_topics=True)
                 
-                name = "a{0}/k_b{1}_k{2}".format(a, b, num_topics)
+                name = "a{0}_b{1}_k{2}".format(a, b, num_topics)
                 models[name] = model
 
                 print('\n')
@@ -165,60 +163,15 @@ def LdaGensim_topics(dictionary, corpus, limit, start, step, alpha, beta):
     return models
 
 models = LdaGensim_topics(dictionary=dictionary, corpus=corpus, 
-                                                         start=5, limit=501, step=5, 
+                                                         start=5, limit=201, step=5, 
                                                          alpha = [0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50], 
                                                          beta = [0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50])
 
 
 #time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(1585905944))
 
-# # SAVE MODELS
-# for i, num in zip(model_1_001, range(5, 501, 5)):
-#     tmp_file = datapath('model_1_001\\{:d}'.format(num))
-#     i.save(tmp_file)
+# SAVE MODELS
+for k, v in models.items():
+    tmp_file = datapath('train_models\\nb5_na04\\{}'.format(k))
+    v.save(tmp_file)
 
-# for i, num in zip(model_10_01, range(5, 501, 5)):
-#     tmp_file = datapath('model_10_01\\{:d}'.format(num))
-#     i.save(tmp_file)
-
-# for i, num in zip(model_50_05, range(5, 501, 5)):
-#     tmp_file = datapath('model_50_05\\{:d}'.format(num))
-#     i.save(tmp_file)
-
-
-# def LdaGensim_topics_one_model(dictionary, corpus, texts, limit, start, step, alpha, beta):
-#     '''
-#     Parameters:
-#     ---------
-#     dictionary: Gensim dictionary
-#     corpus: Gensim corpus
-#     texts: list of input text 
-#     chunksize: number of documents to be used in each training chunk
-#     limit: max num of topics
-
-#     Returns:
-#     ---------
-#     model_list: list of LDA topic
-#     '''
-
-#     model_01_0001 = []
-
-#     for num_topics in range(start, limit, step):
-#         print('Running model with number of topics: ', num_topics)
-#         model = gensim.models.ldamodel.LdaModel(corpus=corpus, id2word=dictionary,
-#                                                 num_topics=num_topics, random_state=123, 
-#                                                 update_every=1, chunksize=50000, passes=5, 
-#                                                 alpha=[alpha]*num_topics, eta=beta,  per_word_topics=True)
-        
-#         print('Saving model with alpha=0.1/k and beta=0.001')
-#         model_01_0001.append(model)
-
-
-#     return model_01_0001
-
-# model_01_0001 = LdaGensim_topics_one_model(dictionary=dictionary, corpus=corpus, 
-#                                                             texts=comments, start=5, limit=501, step=5, alpha = 0.1, beta = 0.001)
-
-# for i, num in zip(model_01_0001, range(5, 501, 5)):
-#     tmp_file = datapath('model_01_0001\\{:d}'.format(num))
-#     i.save(tmp_file)
