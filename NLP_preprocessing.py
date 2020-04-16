@@ -18,6 +18,7 @@ import NLP_visualization as NLP_vis
 #import twokenize as ark
 from spellchecker import SpellChecker
 import MySQL_data as data
+from sklearn.model_selection import train_test_split
 
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -197,8 +198,15 @@ df['clean_text'] = df.clean_text.apply(clean_comment)
 #df.drop(df.index[df.clean_text == "",].tolist(), axis=0, inplace=True)
 df.drop(df.index[df.clean_text.isna(),].tolist(), axis=0, inplace=True)
 
+# remove rows with less than 15 words (short observations)
+df = df.loc[df['clean_text'].map(lambda x: len(str(x).strip().split())) > 15,]
+
+# Divide the data in 80% training and 20% test
+df_train, df_test = train_test_split(df, test_size=0.2, random_state=42)
+
 # write df
-df.to_csv('sub_onetree.csv', index=False, encoding='utf-8')
+df_train.to_csv('.\\DataSource_backup\\sub_onetree_train.csv', index=False, encoding='utf-8')
+df_test.to_csv('.\\DataSource_backup\\sub_onetree_test.csv', index=False, encoding='utf-8')
 
 # Descriptive visualization
 NLP_vis.freq_words(df["clean_text"], True, 50)
