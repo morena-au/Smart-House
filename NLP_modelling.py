@@ -135,15 +135,14 @@ models = LdaGensim_topics(dictionary=filter_dict, corpus=corpus,
 # SAVE MODELS
 # Write pickles incrementally to a file 
 # One pickles equal to a combination of alpha beta across all number of topics)
-# 16 (alpha x beta) pickles with 40 dictionary inside (a topic num for each dict) 
-# https://stackoverflow.com/questions/37954324/how-to-load-one-line-at-a-time-from-a-pickle-file
-# filename = datapath('train_models\\nb5_na04_models.sav')
-# joblib.dump(models, filename)
 
-
-## MemoryError
-# for k, v in models.items():
-#     tmp_file = datapath('train_models\\nb5_na04\\{}'.format(k))
-#     v.save(tmp_file)
+# Divide by groups of 40 (num of topics)
+num = 0
+for i in range(40, len(models)+40, 40):
+    keys_list = list(models.keys())[num:i]
+    tmp_file = datapath('train_models\\nb5_na04_{}models.pkl').format(re.sub(r"\.", "", re.findall(".*_", keys_list[0])[0]))
+    with open(tmp_file, "wb") as handle:
+        pickle.dump({k: v for k, v in models.items() if k in keys_list}, handle)
+    num = i
 
 
