@@ -19,7 +19,7 @@ from gensim.matutils import corpus2csc, Sparse2Corpus
 # avaid creating subprocesses recursively
 if __name__ == '__main__':
     # unpacks argv
-    _, vocabulary = argv 
+    _, vocabulary, alpha = argv 
 
     ## lOAD
     # train data
@@ -41,6 +41,9 @@ if __name__ == '__main__':
     tmp_dir = datapath('train_models\\')
     filename = [f for f in os.listdir(tmp_dir) if f.startswith("{}".format(vocabulary))]
 
+    # MemoryError: suhset based on alpha parameter
+    filename = [f for f in os.listdir(tmp_dir) if f.startswith("{}_{}".format(vocabulary, alpha))]
+ 
     for file in filename:
         with open(os.path.join(tmp_dir, file), "rb") as handle:
             print("Load train models {}... \n".format(file))
